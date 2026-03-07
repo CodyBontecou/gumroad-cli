@@ -1,0 +1,32 @@
+version: 2
+
+builds:
+  - main: ./cmd/gr
+    binary: gr
+    ldflags:
+      - -s -w -X github.com/antiwork/gr/internal/cmd.Version={{.Version}}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+# Brew tap — inactive until repo moves to antiwork/gr
+# brews:
+#   - repository:
+#       owner: antiwork
+#       name: homebrew-tap
+#     homepage: https://gumroad.com
+#     description: CLI for the Gumroad API

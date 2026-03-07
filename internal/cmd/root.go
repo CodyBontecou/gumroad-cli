@@ -1,0 +1,243 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/antiwork/gr/internal/cmd/auth"
+	"github.com/antiwork/gr/internal/cmd/categories"
+	"github.com/antiwork/gr/internal/cmd/completion"
+	"github.com/antiwork/gr/internal/cmd/customfields"
+	"github.com/antiwork/gr/internal/cmd/licenses"
+	"github.com/antiwork/gr/internal/cmd/offercodes"
+	"github.com/antiwork/gr/internal/cmd/payouts"
+	"github.com/antiwork/gr/internal/cmd/products"
+	"github.com/antiwork/gr/internal/cmd/sales"
+	"github.com/antiwork/gr/internal/cmd/subscribers"
+	"github.com/antiwork/gr/internal/cmd/user"
+	"github.com/antiwork/gr/internal/cmd/variants"
+	"github.com/antiwork/gr/internal/cmd/webhooks"
+	"github.com/antiwork/gr/internal/cmdutil"
+	"github.com/antiwork/gr/internal/output"
+	"github.com/spf13/cobra"
+)
+
+var (
+	Version        = "dev"
+	newRootCommand = NewRootCmd
+	exitProcess    = os.Exit
+)
+
+func NewRootCmd() *cobra.Command {
+	opts := cmdutil.DefaultOptions()
+
+	cmd := &cobra.Command{
+		Use:   "gr",
+		Short: "CLI for the Gumroad API",
+		Long:  "A command-line interface for the Gumroad API.\nDesigned for humans and AI agents alike.\n\nDocumentation: https://github.com/antiwork/gr\nMan pages:     available locally as `man gr` after `make install`\nReport issues: https://github.com/antiwork/gr/issues",
+		Example: `  # Log in with your API token
+  gr auth login
+
+  # View your account
+  gr user --json --jq '.user.email'
+
+  # List products and sales
+  gr products list
+  gr sales list --json --jq '.sales[0].id'
+
+  # Verify a license without incrementing uses
+  echo "$LICENSE_KEY" | gr licenses verify --product <id> --no-increment`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ctx := commandContext(cmd)
+			opts.Context = ctx
+			opts.Stdin = cmd.InOrStdin()
+			opts.Version = Version
+			opts.Stdout = cmd.OutOrStdout()
+			opts.Stderr = cmd.ErrOrStderr()
+			cmd.SetContext(cmdutil.WithOptions(ctx, opts))
+			if err := validateOutputFlags(cmd, opts); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireNonNegativeDurationFlag(cmd, "page-delay", opts.PageDelay); err != nil {
+				return err
+			}
+			return nil
+		},
+		Version: Version,
+	}
+
+	cmd.SetVersionTemplate(fmt.Sprintf("gr version %s\n", Version))
+	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		if err == nil {
+			return nil
+		}
+		return cmdutil.NewUsageError(c, err.Error())
+	})
+
+	// Global flags
+	cmd.PersistentFlags().BoolVar(&opts.JSONOutput, "json", false, "Output as JSON")
+	cmd.PersistentFlags().BoolVar(&opts.PlainOutput, "plain", false, "Output as plain tab-separated text")
+	cmd.PersistentFlags().StringVar(&opts.JQExpr, "jq", "", "Filter JSON output with a jq expression")
+	cmd.PersistentFlags().BoolVarP(&opts.Quiet, "quiet", "q", false, "Suppress non-essential output")
+	cmd.PersistentFlags().BoolVar(&opts.DryRun, "dry-run", false, "Preview mutating requests without executing them")
+	cmd.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "Disable color output")
+	cmd.PersistentFlags().BoolVar(&opts.NoInput, "no-input", false, "Disable interactive prompts")
+	cmd.PersistentFlags().BoolVar(&opts.Yes, "yes", false, "Skip confirmation prompts")
+	cmd.PersistentFlags().BoolVar(&opts.NoImage, "no-image", false, "Disable image rendering")
+	cmd.PersistentFlags().DurationVar(&opts.PageDelay, "page-delay", 0, "Wait between paginated --all requests (e.g. 200ms, 1s)")
+	cmd.PersistentFlags().BoolVar(&opts.Debug, "debug", false, "Enable debug logging to stderr")
+
+	// Subcommands
+	cmd.AddCommand(auth.NewAuthCmd())
+	cmd.AddCommand(user.NewUserCmd())
+	cmd.AddCommand(products.NewProductsCmd())
+	cmd.AddCommand(sales.NewSalesCmd())
+	cmd.AddCommand(payouts.NewPayoutsCmd())
+	cmd.AddCommand(subscribers.NewSubscribersCmd())
+	cmd.AddCommand(licenses.NewLicensesCmd())
+	cmd.AddCommand(offercodes.NewOfferCodesCmd())
+	cmd.AddCommand(categories.NewCategoriesCmd())
+	cmd.AddCommand(variants.NewVariantsCmd())
+	cmd.AddCommand(customfields.NewCustomFieldsCmd())
+	cmd.AddCommand(webhooks.NewWebhooksCmd())
+	cmd.AddCommand(completion.NewCompletionCmd())
+	cmdutil.PropagateExamples(cmd)
+
+	return cmd
+}
+
+func commandContext(cmd *cobra.Command) context.Context {
+	if cmd == nil {
+		return context.Background()
+	}
+	if ctx := cmd.Context(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
+
+func validateOutputFlags(cmd *cobra.Command, opts cmdutil.Options) error {
+	if !opts.PlainOutput {
+		return nil
+	}
+
+	message := plainOutputConflictMessage(opts)
+	if message == "" {
+		return nil
+	}
+
+	return cmdutil.NewUsageError(cmd, message)
+}
+
+func plainOutputConflictMessage(opts cmdutil.Options) string {
+	switch {
+	case opts.JSONOutput && opts.JQExpr != "":
+		return "--plain cannot be combined with --json or --jq"
+	case opts.JSONOutput:
+		return "--plain cannot be combined with --json"
+	case opts.JQExpr != "":
+		return "--plain cannot be combined with --jq"
+	default:
+		return ""
+	}
+}
+
+func Execute() {
+	exitProcess(executeRootCommand(os.Stdout, os.Stderr))
+}
+
+func executeRootCommand(stdout, stderr io.Writer) int {
+	return executeCommand(newRootCommand(), stdout, stderr)
+}
+
+func executeCommand(cmd *cobra.Command, stdout, stderr io.Writer) int {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	if err := cmd.Execute(); err != nil {
+		return exitCodeForCommandError(cmd, err)
+	}
+
+	return 0
+}
+
+func exitCodeForCommandError(cmd *cobra.Command, err error) int {
+	if output.IsBrokenPipeError(err) {
+		return 0
+	}
+
+	if structuredOutputRequested(cmd) {
+		writeErr := printStructuredCommandError(cmd.OutOrStdout(), err)
+		switch {
+		case writeErr == nil:
+			return 1
+		case output.IsBrokenPipeError(writeErr):
+			return 0
+		default:
+			printHumanCommandError(cmd, writeErr)
+			return 1
+		}
+	}
+
+	printHumanCommandError(cmd, err)
+	return 1
+}
+
+func printHumanCommandError(cmd *cobra.Command, err error) {
+	style := output.NewStylerForWriter(cmd.ErrOrStderr(), noColorRequested(cmd))
+	fmt.Fprintln(cmd.ErrOrStderr(), style.Red("Error: "+err.Error()))
+}
+
+func noColorRequested(cmd *cobra.Command) bool {
+	if noColorRequestedFromCommand(cmd) {
+		return true
+	}
+	return noColorRequestedInArgs(os.Args[1:])
+}
+
+func noColorRequestedFromCommand(cmd *cobra.Command) bool {
+	opts := cmdutil.OptionsFrom(cmd)
+	if opts.NoColor {
+		return true
+	}
+	if cmd == nil {
+		return false
+	}
+
+	noColor, err := cmd.PersistentFlags().GetBool("no-color")
+	if err == nil && noColor {
+		return true
+	}
+
+	noColor, err = cmd.Flags().GetBool("no-color")
+	return err == nil && noColor
+}
+
+func noColorRequestedInArgs(args []string) bool {
+	for _, arg := range args {
+		if arg == "--no-color" {
+			return true
+		}
+		if !strings.HasPrefix(arg, "--no-color=") {
+			continue
+		}
+		value, err := strconv.ParseBool(strings.TrimPrefix(arg, "--no-color="))
+		if err == nil && value {
+			return true
+		}
+	}
+
+	return false
+}

@@ -1,0 +1,16 @@
+run:
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - errorlint
+    - gofmt
+    - goimports
+    - gosimple
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused

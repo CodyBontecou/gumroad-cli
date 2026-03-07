@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "user": {
+    "name": "Raw User",
+    "email": "raw@example.com",
+    "profile_url": "https://gumroad.com/raw-user"
+  }
+}

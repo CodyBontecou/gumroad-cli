@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "custom_fields": [
+    {
+      "name": "Company",
+      "required": true,
+      "type": "text"
+    },
+    {
+      "name": "Phone",
+      "type": "phone"
+    }
+  ]
+}
