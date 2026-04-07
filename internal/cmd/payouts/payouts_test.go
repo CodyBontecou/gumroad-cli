@@ -628,6 +628,72 @@ func TestList_NoUpcomingEmptyPageStillShowsPaginationHint(t *testing.T) {
 	}
 }
 
+func TestList_NoUpcoming_JSON_PreservesUnknownFields(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.RawJSON(t, w, `{
+			"success": true,
+			"payouts": [
+				{"id": "pay1", "display_payout_period": "Jan 2024", "formatted_amount": "$100", "is_upcoming": false, "extra_field": "preserved"},
+				{"id": "pay2", "display_payout_period": "Feb 2024", "formatted_amount": "$50", "is_upcoming": true, "extra_field": "filtered"}
+			],
+			"unknown_top_level": "should survive"
+		}`)
+	})
+
+	cmd := testutil.Command(newListCmd(), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--no-upcoming"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, out)
+	}
+
+	// Unknown top-level field must survive
+	if resp["unknown_top_level"] != "should survive" {
+		t.Fatalf("unknown top-level field lost: %s", out)
+	}
+
+	// Only non-upcoming payout should remain
+	payouts := resp["payouts"].([]any)
+	if len(payouts) != 1 {
+		t.Fatalf("got %d payouts, want 1", len(payouts))
+	}
+
+	payout := payouts[0].(map[string]any)
+	if payout["id"] != "pay1" {
+		t.Fatalf("wrong payout survived filter: %v", payout["id"])
+	}
+
+	// Unknown per-item field must survive
+	if payout["extra_field"] != "preserved" {
+		t.Fatalf("unknown per-item field lost: %s", out)
+	}
+}
+
+func TestList_NoUpcoming_JSON_PreservesSuccessField(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.RawJSON(t, w, `{
+			"success": true,
+			"payouts": [
+				{"id": "pay1", "is_upcoming": false}
+			]
+		}`)
+	})
+
+	cmd := testutil.Command(newListCmd(), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--no-upcoming"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, out)
+	}
+	if resp["success"] != true {
+		t.Fatalf("success field not preserved: got %v", resp["success"])
+	}
+}
+
 func TestList_PaginationHintPreservesFilters(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.JSON(t, w, map[string]any{
