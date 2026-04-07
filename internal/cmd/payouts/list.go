@@ -107,17 +107,52 @@ func fetchPayoutsListData(client *api.Client, params url.Values, noUpcoming bool
 		return data, nil
 	}
 
-	resp, err := cmdutil.DecodeJSON[payoutsListResponse](data)
-	if err != nil {
-		return nil, err
-	}
-	resp.Payouts = filterPayouts(resp.Payouts, noUpcoming)
+	return filterPayoutsRaw(data)
+}
 
-	data, err = json.Marshal(resp)
+// filterPayoutsRaw removes upcoming payouts from raw JSON without losing
+// unknown fields. It works with map[string]json.RawMessage so that
+// top-level and per-item fields the CLI doesn't know about are preserved.
+func filterPayoutsRaw(data json.RawMessage) (json.RawMessage, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, fmt.Errorf("could not parse response: %w", err)
+	}
+
+	raw, ok := envelope["payouts"]
+	if !ok || string(raw) == "null" {
+		return data, nil
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("could not parse payouts array: %w", err)
+	}
+
+	filtered := make([]json.RawMessage, 0, len(items))
+	for _, item := range items {
+		var fields struct {
+			IsUpcoming bool `json:"is_upcoming"`
+		}
+		if err := json.Unmarshal(item, &fields); err != nil {
+			return nil, fmt.Errorf("could not parse payout item: %w", err)
+		}
+		if !fields.IsUpcoming {
+			filtered = append(filtered, item)
+		}
+	}
+
+	rawFiltered, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, fmt.Errorf("could not encode filtered payouts: %w", err)
+	}
+	envelope["payouts"] = rawFiltered
+
+	result, err := json.Marshal(envelope)
 	if err != nil {
 		return nil, fmt.Errorf("could not encode response: %w", err)
 	}
-	return data, nil
+	return result, nil
 }
 
 func streamPayoutsListAll(opts cmdutil.Options, params url.Values, noUpcoming bool) error {
