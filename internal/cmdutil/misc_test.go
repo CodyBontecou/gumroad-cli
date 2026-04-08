@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/antiwork/gumroad-cli/internal/api"
+	"github.com/antiwork/gumroad-cli/internal/config"
 	"github.com/antiwork/gumroad-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -478,6 +479,7 @@ func setupAuthedAPI(t *testing.T, handler http.HandlerFunc) {
 		t.Fatalf("write config: %v", err)
 	}
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+	t.Setenv(config.EnvAccessToken, "")
 
 	srv := httptest.NewServer(handler)
 	t.Setenv("GUMROAD_API_BASE_URL", srv.URL)
