@@ -313,7 +313,7 @@ func TestCreate_Flags(t *testing.T) {
 	})
 
 	cmd := newCreateCmd()
-	cmd.SetArgs([]string{"--product", "p1", "--category", "vc1", "--name", "XL", "--description", "Extra large", "--price-difference-cents", "300"})
+	cmd.SetArgs([]string{"--product", "p1", "--category", "vc1", "--name", "XL", "--description", "Extra large", "--price-difference", "3.00"})
 	testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
 	if gotName != "XL" {
@@ -379,19 +379,6 @@ func TestCreate_PriceDifferenceInvalidInput(t *testing.T) {
 	var usageErr *cmdutil.UsageError
 	if !errors.As(err, &usageErr) {
 		t.Fatalf("expected *cmdutil.UsageError, got %T", err)
-	}
-}
-
-func TestCreate_PriceDifferenceAndCentsConflict(t *testing.T) {
-	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Error("should not reach API")
-	})
-
-	cmd := newCreateCmd()
-	cmd.SetArgs([]string{"--product", "p1", "--category", "vc1", "--name", "XL", "--price-difference", "5", "--price-difference-cents", "500"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "use --price-difference or --price-difference-cents, not both") {
-		t.Fatalf("expected conflict error, got: %v", err)
 	}
 }
 
@@ -528,7 +515,7 @@ func TestUpdate_Flags(t *testing.T) {
 	})
 
 	cmd := newUpdateCmd()
-	cmd.SetArgs([]string{"v1", "--product", "p1", "--category", "vc1", "--name", "XXL", "--price-difference-cents", "700"})
+	cmd.SetArgs([]string{"v1", "--product", "p1", "--category", "vc1", "--name", "XXL", "--price-difference", "7.00"})
 	testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
 	if gotName != "XXL" {
@@ -591,19 +578,6 @@ func TestUpdate_PriceDifferenceInvalidInput(t *testing.T) {
 	var usageErr *cmdutil.UsageError
 	if !errors.As(err, &usageErr) {
 		t.Fatalf("expected *cmdutil.UsageError, got %T", err)
-	}
-}
-
-func TestUpdate_PriceDifferenceAndCentsConflict(t *testing.T) {
-	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Error("should not reach API")
-	})
-
-	cmd := newUpdateCmd()
-	cmd.SetArgs([]string{"v1", "--product", "p1", "--category", "vc1", "--price-difference", "5", "--price-difference-cents", "500"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "use --price-difference or --price-difference-cents, not both") {
-		t.Fatalf("expected conflict error, got: %v", err)
 	}
 }
 

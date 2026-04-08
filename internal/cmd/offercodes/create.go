@@ -10,7 +10,7 @@ import (
 
 func newCreateCmd() *cobra.Command {
 	var product, name, amount string
-	var amountCents, percentOff, maxPurchaseCount int
+	var percentOff, maxPurchaseCount int
 	var universal bool
 
 	cmd := &cobra.Command{
@@ -21,9 +21,6 @@ func newCreateCmd() *cobra.Command {
 
 Use either --amount (flat discount) or --percent-off (percentage discount), not both.`,
 		RunE: func(c *cobra.Command, args []string) error {
-			if err := cmdutil.RequirePositiveIntFlag(c, "amount-cents", amountCents); err != nil {
-				return err
-			}
 			if err := cmdutil.RequirePercentFlag(c, "percent-off", percentOff); err != nil {
 				return err
 			}
@@ -37,30 +34,28 @@ Use either --amount (flat discount) or --percent-off (percentage discount), not 
 				return cmdutil.MissingFlagError(c, "--name")
 			}
 
-			cents, hasAmountOff, err := cmdutil.ResolveMoneyFlag(c, "amount", "amount-cents", "amount", "", amountCents, amount, false)
-			if err != nil {
-				return err
-			}
-			if hasAmountOff && cents == 0 {
-				return cmdutil.UsageErrorf(c, "--amount must be greater than 0")
-			}
+			flags := c.Flags()
+			hasAmount := flags.Changed("amount")
+			hasPercentOff := flags.Changed("percent-off")
+			hasMaxPurchaseCount := flags.Changed("max-purchase-count")
 
-			hasPercentOff := c.Flags().Changed("percent-off")
-			hasMaxPurchaseCount := c.Flags().Changed("max-purchase-count")
-			if hasAmountOff && hasPercentOff {
-				amountFlag := "--amount"
-				if c.Flags().Changed("amount-cents") {
-					amountFlag = "--amount-cents"
-				}
-				return cmdutil.UsageErrorf(c, "flags %s and --percent-off cannot be used together", amountFlag)
+			if hasAmount && hasPercentOff {
+				return cmdutil.UsageErrorf(c, "flags --amount and --percent-off cannot be used together")
 			}
-			if !hasAmountOff && !hasPercentOff {
+			if !hasAmount && !hasPercentOff {
 				return cmdutil.UsageErrorf(c, "one of --amount or --percent-off is required")
 			}
 
 			params := url.Values{}
 			params.Set("name", name)
-			if hasAmountOff {
+			if hasAmount {
+				cents, err := cmdutil.ParseMoney("amount", amount, "amount", "")
+				if err != nil {
+					return cmdutil.UsageErrorf(c, "%s", err.Error())
+				}
+				if cents <= 0 {
+					return cmdutil.UsageErrorf(c, "--amount must be greater than 0")
+				}
 				params.Set("amount_off", strconv.Itoa(cents))
 			}
 			if hasPercentOff {
@@ -81,8 +76,6 @@ Use either --amount (flat discount) or --percent-off (percentage discount), not 
 	cmd.Flags().StringVar(&product, "product", "", "Product ID (required)")
 	cmd.Flags().StringVar(&name, "name", "", "Offer code name (required)")
 	cmd.Flags().StringVar(&amount, "amount", "", "Flat discount amount (e.g. 5, 5.00)")
-	cmd.Flags().IntVar(&amountCents, "amount-cents", 0, "Flat discount in cents (deprecated, use --amount)")
-	_ = cmd.Flags().MarkHidden("amount-cents")
 	cmd.Flags().IntVar(&percentOff, "percent-off", 0, "Percentage discount")
 	cmd.Flags().IntVar(&maxPurchaseCount, "max-purchase-count", 0, "Maximum number of uses")
 	cmd.Flags().BoolVar(&universal, "universal", false, "Universal offer code")

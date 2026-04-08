@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/spf13/cobra"
 )
 
 // singleUnitCurrencies are currencies where 1 unit = 1 minor unit (no cents).
@@ -51,37 +49,6 @@ func ParseSignedMoney(flag, value, noun, currency string) (int, error) {
 	return parseMoney(flag, value, noun, currency)
 }
 
-// ResolveMoneyFlag resolves a new string-based money flag and its deprecated
-// int-based cents counterpart. It returns the resolved cents value, whether
-// either flag was set, and any error. If both flags are set, it returns an error.
-func ResolveMoneyFlag(c *cobra.Command, newFlag, oldFlag, noun, currency string, oldValue int, newValue string, signed bool) (int, bool, error) {
-	flags := c.Flags()
-	newSet := flags.Changed(newFlag)
-	oldSet := flags.Changed(oldFlag)
-
-	if newSet && oldSet {
-		return 0, false, UsageErrorf(c, "use --%s or --%s, not both", newFlag, oldFlag)
-	}
-	if !newSet && !oldSet {
-		return 0, false, nil
-	}
-
-	if newSet {
-		var cents int
-		var err error
-		if signed {
-			cents, err = ParseSignedMoney(newFlag, newValue, noun, currency)
-		} else {
-			cents, err = ParseMoney(newFlag, newValue, noun, currency)
-		}
-		if err != nil {
-			return 0, false, UsageErrorf(c, "%s", err.Error())
-		}
-		return cents, true, nil
-	}
-
-	return oldValue, true, nil
-}
 
 // FormatMoney converts a minor-unit amount back to a user-friendly string
 // (e.g. 1099 → "10.99", 1000 → "10.00", -150 → "-1.50").

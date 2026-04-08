@@ -353,7 +353,7 @@ func TestRefund_DryRunSkipsConfirmationAndNetwork(t *testing.T) {
 	})
 
 	cmd := testutil.Command(newRefundCmd(), testutil.DryRun(true), testutil.NoInput(true))
-	cmd.SetArgs([]string{"s1", "--amount-cents", "500"})
+	cmd.SetArgs([]string{"s1", "--amount", "5.00"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
 	for _, want := range []string{"Dry run", "PUT /sales/s1/refund", "amount_cents: 500"} {
@@ -399,47 +399,13 @@ func TestRefund_Partial(t *testing.T) {
 	})
 
 	cmd := testutil.Command(newRefundCmd(), testutil.Yes(true), testutil.Quiet(false))
-	cmd.SetArgs([]string{"s1", "--amount-cents", "500"})
-	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
-	if gotAmountCents != "500" {
-		t.Errorf("got amount_cents=%q, want 500", gotAmountCents)
-	}
-	if !strings.Contains(out, "Refunded 500 cents on sale s1.") {
-		t.Errorf("expected partial refund message, got %q", out)
-	}
-}
-
-func TestRefund_PartialWithAmount(t *testing.T) {
-	var gotAmountCents string
-	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			t.Fatalf("ParseForm failed: %v", err)
-		}
-		gotAmountCents = r.PostForm.Get("amount_cents")
-		testutil.JSON(t, w, map[string]any{})
-	})
-
-	cmd := testutil.Command(newRefundCmd(), testutil.Yes(true), testutil.Quiet(false))
 	cmd.SetArgs([]string{"s1", "--amount", "5.00"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	if gotAmountCents != "500" {
 		t.Errorf("got amount_cents=%q, want 500", gotAmountCents)
 	}
 	if !strings.Contains(out, "Refunded 5.00 on sale s1.") {
-		t.Errorf("expected user-friendly refund message, got %q", out)
-	}
-}
-
-func TestRefund_AmountAndAmountCentsConflict(t *testing.T) {
-	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Error("should not reach API")
-	})
-
-	cmd := testutil.Command(newRefundCmd(), testutil.Yes(true))
-	cmd.SetArgs([]string{"s1", "--amount", "5", "--amount-cents", "500"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "use --amount or --amount-cents, not both") {
-		t.Fatalf("expected conflict error, got: %v", err)
+		t.Errorf("expected partial refund message, got %q", out)
 	}
 }
 
@@ -503,34 +469,18 @@ func TestRefund_AmountZeroRejected(t *testing.T) {
 	}
 }
 
-func TestRefund_DryRunWithAmount(t *testing.T) {
-	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Error("dry-run should not reach API")
-	})
-
-	cmd := testutil.Command(newRefundCmd(), testutil.DryRun(true), testutil.NoInput(true))
-	cmd.SetArgs([]string{"s1", "--amount", "5.00"})
-	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
-
-	for _, want := range []string{"Dry run", "PUT /sales/s1/refund", "amount_cents: 500"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("missing %q in %q", want, out)
-		}
-	}
-}
-
 func TestRefund_InvalidPartialAmount(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("should not reach API with invalid amount")
 	})
 
 	cmd := testutil.Command(newRefundCmd(), testutil.Yes(true))
-	cmd.SetArgs([]string{"s1", "--amount-cents", "-1"})
+	cmd.SetArgs([]string{"s1", "--amount", "-1"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !strings.Contains(err.Error(), "--amount-cents must be greater than 0") {
+	if !strings.Contains(err.Error(), "--amount cannot be negative") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	for _, want := range []string{"Usage:", "refund <id>"} {

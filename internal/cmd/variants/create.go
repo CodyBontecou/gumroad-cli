@@ -10,7 +10,7 @@ import (
 
 func newCreateCmd() *cobra.Command {
 	var product, category, name, description, priceDifference string
-	var priceDifferenceCents, maxPurchaseCount int
+	var maxPurchaseCount int
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -30,12 +30,9 @@ func newCreateCmd() *cobra.Command {
 				return cmdutil.MissingFlagError(c, "--name")
 			}
 
-			priceDiffCents, hasPriceDifference, err := cmdutil.ResolveMoneyFlag(c, "price-difference", "price-difference-cents", "price", "", priceDifferenceCents, priceDifference, true)
-			if err != nil {
-				return err
-			}
-
-			hasMaxPurchaseCount := c.Flags().Changed("max-purchase-count")
+			flags := c.Flags()
+			hasPriceDifference := flags.Changed("price-difference")
+			hasMaxPurchaseCount := flags.Changed("max-purchase-count")
 
 			params := url.Values{}
 			params.Set("name", name)
@@ -43,7 +40,11 @@ func newCreateCmd() *cobra.Command {
 				params.Set("description", description)
 			}
 			if hasPriceDifference {
-				params.Set("price_difference_cents", strconv.Itoa(priceDiffCents))
+				cents, err := cmdutil.ParseSignedMoney("price-difference", priceDifference, "price", "")
+				if err != nil {
+					return cmdutil.UsageErrorf(c, "%s", err.Error())
+				}
+				params.Set("price_difference_cents", strconv.Itoa(cents))
 			}
 			if hasMaxPurchaseCount {
 				params.Set("max_purchase_count", strconv.Itoa(maxPurchaseCount))
@@ -59,8 +60,6 @@ func newCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Variant name (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Variant description")
 	cmd.Flags().StringVar(&priceDifference, "price-difference", "", "Price difference (e.g. 5.00, -1.50)")
-	cmd.Flags().IntVar(&priceDifferenceCents, "price-difference-cents", 0, "Price difference in cents (deprecated, use --price-difference)")
-	_ = cmd.Flags().MarkHidden("price-difference-cents")
 	cmd.Flags().IntVar(&maxPurchaseCount, "max-purchase-count", 0, "Maximum number of purchases")
 
 	return cmd
