@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -160,6 +162,14 @@ func (c *Client) do(method, path string, params url.Values) (json.RawMessage, er
 		data, readErr := readResponseBody(resp.Body)
 		resp.Body.Close()
 		if readErr != nil {
+			if isRetryableReadError(readErr) && shouldRetry(method, attempt, 0) {
+				delay := retryDelay(attempt, "")
+				c.debugf("retry method=%s url=%s attempt=%d wait=%s reason=%q", method, logURL, attempt+1, delay, readErr)
+				if err := c.snooze(delay); err != nil {
+					return nil, fmt.Errorf("request failed: %w", err)
+				}
+				continue
+			}
 			c.debugf("response method=%s url=%s status=%d phase=read dur=%s err=%q", method, logURL, resp.StatusCode, time.Since(start).Round(time.Millisecond), readErr)
 			return nil, fmt.Errorf("could not read response: %w", readErr)
 		}
@@ -242,6 +252,23 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func isRetryableReadError(err error) bool {
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	// Check for connection reset. On Unix this is syscall.ECONNRESET (errno 54).
+	// On Windows the real error is WSAECONNRESET (errno 10054), which has a
+	// different value than the POSIX compatibility alias, so we check both.
+	if errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) && errno == 10054 {
+		return true
+	}
+	return false
 }
 
 func shouldRetry(method string, attempt int, statusCode int) bool {

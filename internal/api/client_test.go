@@ -393,6 +393,115 @@ func TestClient_GetRetryCanceledDuringBackoff(t *testing.T) {
 	}
 }
 
+func TestClient_GetRetriesBodyReadFailure(t *testing.T) {
+	attempts := 0
+	c := &Client{
+		token:   "test-token",
+		baseURL: "http://localhost",
+		version: "test",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				attempts++
+				if attempts == 1 {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(errReader{err: io.ErrUnexpectedEOF}),
+					}, nil
+				}
+				body := `{"success":true,"value":"ok"}`
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{},
+					Body:       io.NopCloser(strings.NewReader(body)),
+				}, nil
+			}),
+		},
+	}
+	var slept []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
+
+	data, err := c.Get("/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("got %d attempts, want 2", attempts)
+	}
+	if len(slept) != 1 {
+		t.Fatalf("got %d sleeps, want 1", len(slept))
+	}
+	if !strings.Contains(string(data), "ok") {
+		t.Fatalf("unexpected response: %s", data)
+	}
+}
+
+func TestClient_PostDoesNotRetryBodyReadFailure(t *testing.T) {
+	attempts := 0
+	c := &Client{
+		token:   "test-token",
+		baseURL: "http://localhost",
+		version: "test",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				attempts++
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(errReader{err: io.ErrUnexpectedEOF}),
+				}, nil
+			}),
+		},
+	}
+	c.sleep = func(context.Context, time.Duration) error {
+		t.Fatal("unexpected retry sleep for POST")
+		return nil
+	}
+
+	_, err := c.Post("/test", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if attempts != 1 {
+		t.Fatalf("got %d attempts, want 1", attempts)
+	}
+}
+
+func TestClient_GetDoesNotRetryOversizedBody(t *testing.T) {
+	attempts := 0
+	oversized := strings.Repeat("x", maxResponseBodySize+1)
+	c := &Client{
+		token:   "test-token",
+		baseURL: "http://localhost",
+		version: "test",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				attempts++
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(strings.NewReader(oversized)),
+				}, nil
+			}),
+		},
+	}
+	c.sleep = func(context.Context, time.Duration) error {
+		t.Fatal("unexpected retry sleep for oversized body")
+		return nil
+	}
+
+	_, err := c.Get("/test", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "response too large") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("got %d attempts, want 1", attempts)
+	}
+}
+
 func TestParseRetryAfter_Seconds(t *testing.T) {
 	delay, ok := parseRetryAfter("2")
 	if !ok {
