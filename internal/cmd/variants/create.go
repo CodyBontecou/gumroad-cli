@@ -9,7 +9,7 @@ import (
 )
 
 func newCreateCmd() *cobra.Command {
-	var product, category, name, description string
+	var product, category, name, description, priceDifference string
 	var priceDifferenceCents, maxPurchaseCount int
 
 	cmd := &cobra.Command{
@@ -17,7 +17,6 @@ func newCreateCmd() *cobra.Command {
 		Short: "Create a variant",
 		Args:  cmdutil.ExactArgs(0),
 		RunE: func(c *cobra.Command, args []string) error {
-			opts := cmdutil.OptionsFrom(c)
 			if err := cmdutil.RequireNonNegativeIntFlag(c, "max-purchase-count", maxPurchaseCount); err != nil {
 				return err
 			}
@@ -31,9 +30,12 @@ func newCreateCmd() *cobra.Command {
 				return cmdutil.MissingFlagError(c, "--name")
 			}
 
-			flags := c.Flags()
-			hasPriceDifference := flags.Changed("price-difference-cents")
-			hasMaxPurchaseCount := flags.Changed("max-purchase-count")
+			priceDiffCents, hasPriceDifference, err := cmdutil.ResolveMoneyFlag(c, "price-difference", "price-difference-cents", "price", "", priceDifferenceCents, priceDifference, true)
+			if err != nil {
+				return err
+			}
+
+			hasMaxPurchaseCount := c.Flags().Changed("max-purchase-count")
 
 			params := url.Values{}
 			params.Set("name", name)
@@ -41,14 +43,14 @@ func newCreateCmd() *cobra.Command {
 				params.Set("description", description)
 			}
 			if hasPriceDifference {
-				params.Set("price_difference_cents", strconv.Itoa(priceDifferenceCents))
+				params.Set("price_difference_cents", strconv.Itoa(priceDiffCents))
 			}
 			if hasMaxPurchaseCount {
 				params.Set("max_purchase_count", strconv.Itoa(maxPurchaseCount))
 			}
 
 			path := cmdutil.JoinPath("products", product, "variant_categories", category, "variants")
-			return cmdutil.RunRequestWithSuccess(opts, "Creating variant...", "POST", path, params, "Variant created.")
+			return cmdutil.RunRequestWithSuccess(cmdutil.OptionsFrom(c), "Creating variant...", "POST", path, params, "Variant created.")
 		},
 	}
 
@@ -56,7 +58,9 @@ func newCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&category, "category", "", "Variant category ID (required)")
 	cmd.Flags().StringVar(&name, "name", "", "Variant name (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Variant description")
-	cmd.Flags().IntVar(&priceDifferenceCents, "price-difference-cents", 0, "Price difference in cents")
+	cmd.Flags().StringVar(&priceDifference, "price-difference", "", "Price difference (e.g. 5.00, -1.50)")
+	cmd.Flags().IntVar(&priceDifferenceCents, "price-difference-cents", 0, "Price difference in cents (deprecated, use --price-difference)")
+	_ = cmd.Flags().MarkHidden("price-difference-cents")
 	cmd.Flags().IntVar(&maxPurchaseCount, "max-purchase-count", 0, "Maximum number of purchases")
 
 	return cmd
