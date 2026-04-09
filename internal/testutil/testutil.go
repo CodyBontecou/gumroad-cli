@@ -210,18 +210,16 @@ func CaptureOutput(fn func()) (string, string) {
 	}()
 
 	var stdoutBuf, stderrBuf bytes.Buffer
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&stdoutBuf, stdoutR)
-		_, _ = io.Copy(&stderrBuf, stderrR)
-		close(done)
-	}()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); _, _ = io.Copy(&stdoutBuf, stdoutR) }()
+	go func() { defer wg.Done(); _, _ = io.Copy(&stderrBuf, stderrR) }()
 
 	fn()
 
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
-	<-done
+	wg.Wait()
 	_ = stdoutR.Close()
 	_ = stderrR.Close()
 
