@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -27,7 +28,11 @@ func buildBinary(t *testing.T) string {
 			buildBinaryErr = err
 			return
 		}
-		buildBinaryPath = filepath.Join(dir, "gumroad")
+		bin := "gumroad"
+		if runtime.GOOS == "windows" {
+			bin = "gumroad.exe"
+		}
+		buildBinaryPath = filepath.Join(dir, bin)
 		cmd := exec.Command("go", "build", "-o", buildBinaryPath, "./cmd/gumroad")
 		cmd.Dir = getRootDir(t)
 		out, err := cmd.CombinedOutput()
