@@ -177,6 +177,9 @@ func TestProductsHelpMentionsDraftWorkflow(t *testing.T) {
 	if !strings.Contains(out, "created as drafts") {
 		t.Fatalf("products help should mention draft workflow, got %q", out)
 	}
+	if !strings.Contains(out, "products publish") {
+		t.Fatalf("products help should mention publish command, got %q", out)
+	}
 }
 
 func TestTopLevelSKUsCommandIsUnavailable(t *testing.T) {
@@ -674,10 +677,13 @@ func TestProductsHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("products help failed: %v\n%s", err, out)
 	}
-	for _, sub := range []string{"list", "view", "delete", "enable", "disable"} {
+	for _, sub := range []string{"list", "view", "delete", "unpublish"} {
 		if !strings.Contains(out, sub) {
 			t.Errorf("products help missing subcommand %q", sub)
 		}
+	}
+	if !strings.Contains(out, "Publish a product") {
+		t.Errorf("products help missing publish subcommand description")
 	}
 }
 
