@@ -488,7 +488,7 @@ func TestCreate_MaxPurchaseCount(t *testing.T) {
 			t.Fatalf("ParseForm failed: %v", err)
 		}
 		gotParam = r.PostForm.Get("max_purchase_count")
-		testutil.JSON(t, w, map[string]any{})
+		testutil.JSON(t, w, map[string]any{"variant": map[string]any{"id": "v1", "name": "XL"}})
 	})
 
 	cmd := newCreateCmd()
@@ -507,7 +507,7 @@ func TestCreate_MaxPurchaseCountZero(t *testing.T) {
 			t.Fatalf("ParseForm failed: %v", err)
 		}
 		gotParam = r.PostForm.Get("max_purchase_count")
-		testutil.JSON(t, w, map[string]any{})
+		testutil.JSON(t, w, map[string]any{"variant": map[string]any{"id": "v1", "name": "XL"}})
 	})
 
 	cmd := newCreateCmd()

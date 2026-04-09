@@ -83,7 +83,13 @@ func TestCreate_Params(t *testing.T) {
 		}
 		gotResource = r.PostForm.Get("resource_name")
 		gotURL = r.PostForm.Get("post_url")
-		testutil.JSON(t, w, map[string]any{})
+		testutil.JSON(t, w, map[string]any{
+			"resource_subscription": map[string]any{
+				"id":            "rs1",
+				"resource_name": r.PostForm.Get("resource_name"),
+				"post_url":      r.PostForm.Get("post_url"),
+			},
+		})
 	})
 
 	cmd := newCreateCmd()
