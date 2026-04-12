@@ -19,6 +19,7 @@ import (
 	"github.com/antiwork/gumroad-cli/internal/cmd/payouts"
 	"github.com/antiwork/gumroad-cli/internal/cmd/products"
 	"github.com/antiwork/gumroad-cli/internal/cmd/sales"
+	"github.com/antiwork/gumroad-cli/internal/cmd/skill"
 	"github.com/antiwork/gumroad-cli/internal/cmd/subscribers"
 	"github.com/antiwork/gumroad-cli/internal/cmd/user"
 	"github.com/antiwork/gumroad-cli/internal/cmd/variants"
@@ -110,6 +111,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(customfields.NewCustomFieldsCmd())
 	cmd.AddCommand(webhooks.NewWebhooksCmd())
 	cmd.AddCommand(completion.NewCompletionCmd())
+	cmd.AddCommand(skill.NewSkillCmd())
 	cmdutil.PropagateExamples(cmd)
 
 	return cmd
