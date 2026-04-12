@@ -100,7 +100,7 @@ func BrowserFlow(ctx context.Context, cfg FlowConfig, openBrowser func(string) e
 	resultCh := make(chan callbackResult, 1)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", callbackHandler(state, resultCh))
-	server := &http.Server{Handler: mux}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
 	serverDone := make(chan struct{})
 	go func() {
@@ -127,7 +127,22 @@ func BrowserFlow(ctx context.Context, cfg FlowConfig, openBrowser func(string) e
 	select {
 	case result = <-resultCh:
 	case <-ctx.Done():
-		return "", fmt.Errorf("authorization timed out after %s", cfg.Timeout)
+		if ctx.Err() != context.DeadlineExceeded {
+			return "", fmt.Errorf("authorization cancelled")
+		}
+		// Drain resultCh in case the callback arrived at the exact deadline.
+		select {
+		case result = <-resultCh:
+			if result.Err != nil {
+				return "", result.Err
+			}
+			// Original ctx expired; give the token exchange its own deadline.
+			xctx, xcancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer xcancel()
+			return exchangeCode(xctx, cfg, result.Code, redirectURI, verifier)
+		default:
+			return "", fmt.Errorf("authorization timed out after %s", cfg.Timeout)
+		}
 	}
 	if result.Err != nil {
 		return "", result.Err
@@ -167,9 +182,25 @@ func HeadlessFlow(ctx context.Context, cfg FlowConfig, out io.Writer, readLine f
 	fmt.Fprintf(out, "(it may show an error page — that's expected).\n\n")
 	fmt.Fprintf(out, "Paste the full URL from your browser's address bar: ")
 
-	line, err := readLine()
-	if err != nil {
-		return "", fmt.Errorf("could not read URL: %w", err)
+	type lineResult struct {
+		line string
+		err  error
+	}
+	lineCh := make(chan lineResult, 1)
+	go func() {
+		l, e := readLine()
+		lineCh <- lineResult{l, e}
+	}()
+
+	var line string
+	select {
+	case res := <-lineCh:
+		if res.err != nil {
+			return "", fmt.Errorf("could not read URL: %w", res.err)
+		}
+		line = res.line
+	case <-ctx.Done():
+		return "", fmt.Errorf("authorization timed out after %s", cfg.Timeout)
 	}
 
 	code, err := parseCallbackURL(strings.TrimSpace(line), state)

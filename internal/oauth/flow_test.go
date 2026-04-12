@@ -13,6 +13,22 @@ import (
 	"time"
 )
 
+func mustEncode(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		t.Fatalf("encode JSON: %v", err)
+	}
+}
+
+func mustGet(t *testing.T, url string) *http.Response {
+	t.Helper()
+	resp, err := http.Get(url) //nolint:gosec // G107: test-only, URL is constructed from test server
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	return resp
+}
+
 func testConfig(tokenServer *httptest.Server) FlowConfig {
 	return FlowConfig{
 		ClientID:     "test-client-id",
@@ -48,7 +64,7 @@ func tokenHandler(t *testing.T, wantVerifier bool) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(TokenResponse{
+		mustEncode(t, w, TokenResponse{
 			AccessToken: "test-access-token",
 			TokenType:   "bearer",
 			Scope:       "edit_products view_sales",
@@ -72,10 +88,7 @@ func TestBrowserFlow_HappyPath(t *testing.T) {
 
 		// Hit the callback endpoint.
 		callbackURL := fmt.Sprintf("%s?code=test-auth-code&state=%s", redirectURI, state)
-		resp, err := http.Get(callbackURL)
-		if err != nil {
-			t.Fatalf("callback request failed: %v", err)
-		}
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -99,10 +112,7 @@ func TestBrowserFlow_StateMismatch(t *testing.T) {
 
 		// Send a callback with wrong state — should be silently ignored.
 		callbackURL := fmt.Sprintf("%s?code=test-auth-code&state=wrong-state", redirectURI)
-		resp, err := http.Get(callbackURL)
-		if err != nil {
-			t.Fatalf("callback request failed: %v", err)
-		}
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("expected 400 for wrong state, got %d", resp.StatusCode)
@@ -126,10 +136,7 @@ func TestBrowserFlow_UserDenied(t *testing.T) {
 		state := u.Query().Get("state")
 
 		callbackURL := fmt.Sprintf("%s?error=access_denied&error_description=User+denied&state=%s", redirectURI, state)
-		resp, err := http.Get(callbackURL)
-		if err != nil {
-			t.Fatalf("callback request failed: %v", err)
-		}
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -179,7 +186,7 @@ func TestBrowserFlow_TokenExchangeFailure(t *testing.T) {
 		redirectURI := u.Query().Get("redirect_uri")
 		state := u.Query().Get("state")
 		callbackURL := fmt.Sprintf("%s?code=bad-code&state=%s", redirectURI, state)
-		resp, _ := http.Get(callbackURL)
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -196,7 +203,7 @@ func TestBrowserFlow_PKCEParamsInTokenExchange(t *testing.T) {
 		capturedVerifier = vals.Get("code_verifier")
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(TokenResponse{AccessToken: "tok", TokenType: "bearer"})
+		mustEncode(t, w, TokenResponse{AccessToken: "tok", TokenType: "bearer"})
 	}))
 	defer tokenSrv.Close()
 	cfg := testConfig(tokenSrv)
@@ -215,7 +222,7 @@ func TestBrowserFlow_PKCEParamsInTokenExchange(t *testing.T) {
 		}
 
 		callbackURL := fmt.Sprintf("%s?code=auth-code&state=%s", redirectURI, state)
-		resp, _ := http.Get(callbackURL)
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -365,7 +372,7 @@ func TestBrowserFlow_NoCode(t *testing.T) {
 		state := u.Query().Get("state")
 
 		callbackURL := fmt.Sprintf("%s?state=%s", redirectURI, state)
-		resp, _ := http.Get(callbackURL)
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -387,7 +394,7 @@ func TestBrowserFlow_TokenResponseEmpty(t *testing.T) {
 		redirectURI := u.Query().Get("redirect_uri")
 		state := u.Query().Get("state")
 		callbackURL := fmt.Sprintf("%s?code=c&state=%s", redirectURI, state)
-		resp, _ := http.Get(callbackURL)
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -408,7 +415,7 @@ func TestBrowserFlow_TokenResponseInvalidJSON(t *testing.T) {
 		redirectURI := u.Query().Get("redirect_uri")
 		state := u.Query().Get("state")
 		callbackURL := fmt.Sprintf("%s?code=c&state=%s", redirectURI, state)
-		resp, _ := http.Get(callbackURL)
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})
@@ -446,7 +453,7 @@ func TestBrowserFlow_ErrorParamWithoutDescription(t *testing.T) {
 		redirectURI := u.Query().Get("redirect_uri")
 		state := u.Query().Get("state")
 		callbackURL := fmt.Sprintf("%s?error=server_error&state=%s", redirectURI, state)
-		resp, _ := http.Get(callbackURL)
+		resp := mustGet(t, callbackURL)
 		resp.Body.Close()
 		return nil
 	})

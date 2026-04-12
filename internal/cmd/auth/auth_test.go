@@ -982,7 +982,7 @@ func withMockBrowser(t *testing.T) {
 		redirectURI := u.Query().Get("redirect_uri")
 		state := u.Query().Get("state")
 		callbackURL := fmt.Sprintf("%s?code=test-auth-code&state=%s", redirectURI, state)
-		resp, err := http.Get(callbackURL)
+		resp, err := http.Get(callbackURL) //nolint:gosec // G107: test-only, URL from test server
 		if err != nil {
 			return err
 		}
@@ -1008,11 +1008,13 @@ func setupOAuthTokenServer(t *testing.T) {
 	t.Helper()
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(oauth.TokenResponse{
+		if err := json.NewEncoder(w).Encode(oauth.TokenResponse{
 			AccessToken: "oauth-access-token-from-server",
 			TokenType:   "bearer",
 			Scope:       "edit_products view_sales",
-		})
+		}); err != nil {
+			t.Errorf("encode token response: %v", err)
+		}
 	}))
 	t.Cleanup(tokenSrv.Close)
 
@@ -1132,7 +1134,9 @@ func TestLogin_OAuth_WebFlag_NoFallback(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
 
 	cmd := testutil.Command(newLoginCmd())
-	cmd.Flags().Set("web", "true")
+	if err := cmd.Flags().Set("web", "true"); err != nil {
+		t.Fatalf("set --web flag: %v", err)
+	}
 	err := cmd.RunE(cmd, []string{})
 	if err == nil || !strings.Contains(err.Error(), "browser login failed") {
 		t.Fatalf("expected browser login failed error, got: %v", err)
