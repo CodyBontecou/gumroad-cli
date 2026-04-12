@@ -16,6 +16,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func setInteractive(t *testing.T, interactive bool) {
+	t.Helper()
+	orig := prompt.IsInteractive
+	prompt.IsInteractive = func(io.Reader) bool { return interactive }
+	t.Cleanup(func() { prompt.IsInteractive = orig })
+}
+
 func rootWithSkill() *cobra.Command {
 	root := &cobra.Command{Use: "gumroad"}
 	root.AddCommand(NewSkillCmd())
@@ -58,6 +65,31 @@ func TestSkill_NoInput_PrintsToStdout(t *testing.T) {
 	}
 }
 
+func TestSkill_PipedStdin_FallsBackToStdout(t *testing.T) {
+	output.SetStdoutIsTerminalForTesting(true)
+	defer output.ResetStdoutIsTerminalForTesting()
+
+	// Simulate piped stdin (non-interactive reader)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+
+	var stdout bytes.Buffer
+	cmd := testutil.Command(NewSkillCmd(), testutil.NoInput(false), testutil.Stdout(&stdout), testutil.Stdin(r))
+
+	runErr := cmd.RunE(cmd, []string{})
+	r.Close()
+	if runErr != nil {
+		t.Fatalf("expected fallback to stdout, got error: %v", runErr)
+	}
+
+	if !strings.Contains(stdout.String(), "name: gumroad-cli") {
+		t.Error("expected skill content on stdout when stdin is piped")
+	}
+}
+
 func TestSkillInstall_CustomPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "custom", "SKILL.md")
@@ -84,15 +116,6 @@ func TestSkillInstall_CustomPath(t *testing.T) {
 
 func TestSkillInstall_DefaultLocations(t *testing.T) {
 	dir := t.TempDir()
-
-	// Override defaultTargets to use temp dir
-	origTargets := defaultTargets
-	defaultTargets = func() []installTarget {
-		return []installTarget{
-			{"Test Agent", filepath.Join(dir, ".agents", skillRelPath)},
-		}
-	}
-	t.Cleanup(func() { defaultTargets = origTargets })
 
 	// Create a fake ~/.claude dir so symlink path triggers
 	claudeDir := filepath.Join(dir, ".claude")
@@ -227,6 +250,7 @@ func TestSkillInstall_Quiet(t *testing.T) {
 func TestSkill_TTY_SelectInstallTarget(t *testing.T) {
 	output.SetStdoutIsTerminalForTesting(true)
 	defer output.ResetStdoutIsTerminalForTesting()
+	setInteractive(t, true)
 
 	dir := t.TempDir()
 	installPath := filepath.Join(dir, "SKILL.md")
@@ -264,6 +288,7 @@ func TestSkill_TTY_SelectInstallTarget(t *testing.T) {
 func TestSkill_TTY_SelectStdout(t *testing.T) {
 	output.SetStdoutIsTerminalForTesting(true)
 	defer output.ResetStdoutIsTerminalForTesting()
+	setInteractive(t, true)
 
 	origTargets := defaultTargets
 	defaultTargets = func() []installTarget {
@@ -292,6 +317,7 @@ func TestSkill_TTY_SelectStdout(t *testing.T) {
 func TestSkill_TTY_SelectError(t *testing.T) {
 	output.SetStdoutIsTerminalForTesting(true)
 	defer output.ResetStdoutIsTerminalForTesting()
+	setInteractive(t, true)
 
 	origTargets := defaultTargets
 	defaultTargets = func() []installTarget {

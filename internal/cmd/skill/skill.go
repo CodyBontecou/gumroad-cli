@@ -80,7 +80,7 @@ func runSkill(opts cmdutil.Options) error {
 		return fmt.Errorf("could not read embedded skill: %w", err)
 	}
 
-	if !output.IsTTY() || opts.NoInput {
+	if !output.IsTTY() || opts.NoInput || !prompt.IsInteractive(opts.In()) {
 		_, err := opts.Out().Write(content)
 		return err
 	}
