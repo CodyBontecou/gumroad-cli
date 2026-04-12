@@ -1035,13 +1035,17 @@ func TestLogin_OAuth_BrowserFlow(t *testing.T) {
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer oauth-access-token-from-server" {
 			w.WriteHeader(401)
-			json.NewEncoder(w).Encode(map[string]any{"success": false})
+			if err := json.NewEncoder(w).Encode(map[string]any{"success": false}); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"user":    map[string]any{"name": "OAuth User", "email": "oauth@test.com"},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -1069,10 +1073,12 @@ func TestLogin_OAuth_BrowserFails_FallsBackToHeadless(t *testing.T) {
 	withMockBrowserFail(t)
 	setupOAuthTokenServer(t)
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"user":    map[string]any{"name": "Headless User", "email": "h@test.com"},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -1149,7 +1155,9 @@ func TestLogin_OAuth_VerifyAndSave_401(t *testing.T) {
 	setupOAuthTokenServer(t)
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
-		json.NewEncoder(w).Encode(map[string]any{"success": false, "message": "Unauthorized"})
+		if err := json.NewEncoder(w).Encode(map[string]any{"success": false, "message": "Unauthorized"}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -1166,10 +1174,12 @@ func TestLogin_OAuth_JSONOutput(t *testing.T) {
 	withMockBrowser(t)
 	setupOAuthTokenServer(t)
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"user":    map[string]any{"name": "JSON User", "email": "json@test.com"},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -1193,10 +1203,12 @@ func TestLogin_OAuth_PlainOutput(t *testing.T) {
 	withMockBrowser(t)
 	setupOAuthTokenServer(t)
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"user":    map[string]any{"name": "Plain", "email": "p@t.com"},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -1216,10 +1228,12 @@ func TestLogin_OAuth_QuietOutput(t *testing.T) {
 	withMockBrowser(t)
 	setupOAuthTokenServer(t)
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"user":    map[string]any{"name": "Quiet", "email": "q@t.com"},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -1237,10 +1251,12 @@ func TestLogin_OAuth_QuietOutput(t *testing.T) {
 func TestLogin_PipedStdin_StillWorks(t *testing.T) {
 	withTerminal(t, false)
 	setupAuth(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"user":    map[string]any{"name": "Piped", "email": "piped@test.com"},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	})
 	cfgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
