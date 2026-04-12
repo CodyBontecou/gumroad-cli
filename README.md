@@ -146,10 +146,6 @@ A [Claude Code skill](.claude/skills/gumroad-cli/SKILL.md) is included in this r
 - **File uploads** — the API supports a presign → S3 upload → complete workflow for product files, covers, and thumbnails. The CLI does not yet wrap this. Use the web UI for file management.
 - **Rich content pages** — Gumroad's multi-section page editor (the "Content" tab) has no public API. Product descriptions (`--description`, HTML) are fully supported.
 
-**Worth knowing:**
-
-- **Webhook deletion** requires the token's OAuth app to match the app that created the subscription. Webhooks created through the web UI cannot be deleted via the API.
-
 
 ## Design principles
 
