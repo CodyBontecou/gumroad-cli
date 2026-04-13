@@ -1,4 +1,4 @@
-# gumroad-cli
+# Gumroad CLI
 
 CLI for the [Gumroad API](https://app.gumroad.com/api). Designed for humans and AI agents alike.
 
@@ -93,6 +93,7 @@ gumroad variant-categories list, view, create, update, delete
 gumroad variants      list, view, create, update, delete
 gumroad custom-fields list, create, update, delete
 gumroad webhooks      list, create, delete
+gumroad skill         Install or refresh the Claude Code skill
 gumroad completion    bash, zsh, fish, powershell
 ```
 
@@ -135,7 +136,7 @@ gumroad completion powershell | Out-String | Invoke-Expression  # PowerShell
 
 `gumroad` is built to work with AI agents. The `--json`, `--jq`, and `--no-input` flags make it easy to query Gumroad data programmatically, and `GUMROAD_ACCESS_TOKEN` gives agents a no-persistence auth path.
 
-A [Claude Code skill](.claude/skills/gumroad-cli/SKILL.md) is included in this repo. Install it to let Claude automatically use `gumroad` when you ask about your products, sales, or subscribers.
+A [Claude Code skill](skills/gumroad/SKILL.md) is included. Run `gumroad skill` to install or refresh it.
 
 ## API coverage
 
