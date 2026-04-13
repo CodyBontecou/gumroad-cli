@@ -244,7 +244,7 @@ func callbackHandler(expectedState string, resultCh chan<- callbackResult) http.
 		// keeps waiting for the real callback.
 		if q.Get("state") != expectedState {
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, htmlPage("Error", "Invalid request. Please try again."))
+			fmt.Fprint(w, htmlPage("Something went wrong", "Close this tab and try again.", true))
 			return
 		}
 
@@ -260,12 +260,12 @@ func callbackHandler(expectedState string, resultCh chan<- callbackResult) http.
 
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, htmlPage("Error", "Authorization failed. You can close this tab."))
+			fmt.Fprint(w, htmlPage("Authorization denied", "You can close this tab.", true))
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, htmlPage("Success", "Authorization complete! You can close this tab."))
+		fmt.Fprint(w, htmlPage("Logged in", "You can close this tab.", false))
 	}
 }
 
@@ -341,12 +341,25 @@ func exchangeCode(ctx context.Context, cfg FlowConfig, code, redirectURI, verifi
 	return tokenResp.AccessToken, nil
 }
 
-func htmlPage(title, message string) string {
+func htmlPage(title, message string, isError bool) string {
 	t := html.EscapeString(title)
 	m := html.EscapeString(message)
+	icon := `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+	iconBg := "#ff90e8"
+	if isError {
+		icon = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+		iconBg = "#dc341e"
+	}
 	return fmt.Sprintf(`<!DOCTYPE html>
-<html><head><title>%s — Gumroad CLI</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f9f9f9}
-.card{text-align:center;padding:2rem;border-radius:8px;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.12)}</style>
-</head><body><div class="card"><h1>%s</h1><p>%s</p></div></body></html>`, t, t, m)
+<html lang="en"><head><meta charset="utf-8"><title>Gumroad CLI</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"ABC Favorit",Avenir,Montserrat,Corbel,"URW Gothic",source-sans-pro,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:1rem;background:#f4f4f0;color:#000;line-height:1.5}
+.card{text-align:center;padding:2rem;background:#fff;border:1px solid #000;border-radius:0.25rem;max-width:24rem;width:100%%}
+.icon{display:inline-flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;margin-bottom:1rem;background:%s;color:#000;border:1px solid #000;border-radius:999px}
+h1{font-size:1.25rem;font-weight:700;margin-bottom:0.25rem}
+p{color:#666}
+</style>
+</head><body><main class="card"><div class="icon">%s</div><h1>%s</h1><p>%s</p></main></body></html>`,
+		iconBg, icon, t, m)
 }
