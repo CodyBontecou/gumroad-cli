@@ -1,4 +1,4 @@
-# Gumroad CLI
+# <img src="assets/gumroad-badge.svg" height="28" alt="Gumroad"> Gumroad CLI
 
 CLI for the [Gumroad API](https://app.gumroad.com/api). Designed for humans and AI agents alike.
 
