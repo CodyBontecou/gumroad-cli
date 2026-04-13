@@ -157,6 +157,8 @@ func verifyAndSave(c *cobra.Command, opts cmdutil.Options, token string) error {
 		return fmt.Errorf("could not save token: %w", err)
 	}
 
+	sp.Stop()
+
 	if opts.UsesJSONOutput() {
 		return printAuthJSON(opts, statusOutput{
 			Authenticated: true,
