@@ -25,10 +25,10 @@ func newDeleteCmd() *cobra.Command {
 				return err
 			}
 			if !ok {
-				return cmdutil.PrintCancelledAction(opts, "delete variant category "+args[0])
+				return cmdutil.PrintCancelledAction(opts, "delete variant category "+args[0], args[0])
 			}
 
-			return cmdutil.RunRequestWithSuccess(opts, "Deleting variant category...", "DELETE", cmdutil.JoinPath("products", product, "variant_categories", args[0]), url.Values{}, "Variant category "+args[0]+" deleted.")
+			return cmdutil.RunRequestWithSuccess(opts, "Deleting variant category...", "DELETE", cmdutil.JoinPath("products", product, "variant_categories", args[0]), url.Values{}, args[0], "Variant category "+args[0]+" deleted.")
 		},
 	}
 

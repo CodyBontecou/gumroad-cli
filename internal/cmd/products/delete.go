@@ -19,10 +19,10 @@ func newDeleteCmd() *cobra.Command {
 				return err
 			}
 			if !ok {
-				return cmdutil.PrintCancelledAction(opts, "delete product "+args[0])
+				return cmdutil.PrintCancelledAction(opts, "delete product "+args[0], args[0])
 			}
 
-			return cmdutil.RunRequestWithSuccess(opts, "Deleting product...", "DELETE", cmdutil.JoinPath("products", args[0]), url.Values{}, "Product "+args[0]+" deleted.")
+			return cmdutil.RunRequestWithSuccess(opts, "Deleting product...", "DELETE", cmdutil.JoinPath("products", args[0]), url.Values{}, args[0], "Product "+args[0]+" deleted.")
 		},
 	}
 }

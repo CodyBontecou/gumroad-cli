@@ -90,7 +90,7 @@ func PrintDryRunAction(opts Options, action string) error {
 	return output.Writeln(opts.Out(), style.Yellow(dryRunLabel)+": "+action)
 }
 
-func PrintCancelledAction(opts Options, action string) error {
+func PrintCancelledAction(opts Options, action, id string) error {
 	trimmedAction := strings.TrimSpace(action)
 	message := cancelledActionMessage(trimmedAction)
 
@@ -98,6 +98,7 @@ func PrintCancelledAction(opts Options, action string) error {
 		return printMutationPayload(opts, mutationOutput{
 			Success:   false,
 			Message:   message,
+			ID:        id,
 			Cancelled: true,
 			Action:    trimmedAction,
 		})

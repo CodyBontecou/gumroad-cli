@@ -426,9 +426,30 @@ func TestRotate_JSON(t *testing.T) {
 	cmd := testutil.Command(newRotateCmd(), testutil.JSONOutput())
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
-	var resp map[string]any
+	var resp struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+		ID      string `json:"id"`
+		Result  struct {
+			Purchase struct {
+				LicenseKey string `json:"license_key"`
+			} `json:"purchase"`
+		} `json:"result"`
+	}
 	if err := json.Unmarshal([]byte(out), &resp); err != nil {
 		t.Fatalf("not valid JSON: %v", err)
+	}
+	if !resp.Success {
+		t.Fatal("expected success=true")
+	}
+	if resp.Message != "License key rotated." {
+		t.Fatalf("unexpected message: %q", resp.Message)
+	}
+	if resp.ID != "p1" {
+		t.Fatalf("expected id=p1, got %q", resp.ID)
+	}
+	if resp.Result.Purchase.LicenseKey != "NEW-KEY" {
+		t.Fatalf("expected new key in result, got %q", resp.Result.Purchase.LicenseKey)
 	}
 }
 
@@ -459,6 +480,75 @@ func TestRotate_QuietStillPrintsNewKey(t *testing.T) {
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	if strings.TrimSpace(out) != "NEW-QUIET" {
 		t.Fatalf("quiet output should contain only the new key, got %q", out)
+	}
+}
+
+func TestEnable_JSON(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{})
+	})
+
+	cmd := testutil.Command(newEnableCmd(), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--product", "p1", "--key", "SECRET-KEY"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+	var resp struct {
+		Success bool   `json:"success"`
+		ID      string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if resp.ID != "p1" {
+		t.Fatalf("expected id=p1 (product), got %q", resp.ID)
+	}
+	if strings.Contains(out, "SECRET-KEY") {
+		t.Fatal("license key should not appear in JSON output")
+	}
+}
+
+func TestDisable_JSON(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{})
+	})
+
+	cmd := testutil.Command(newDisableCmd(), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--product", "p1", "--key", "SECRET-KEY"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+	var resp struct {
+		Success bool   `json:"success"`
+		ID      string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if resp.ID != "p1" {
+		t.Fatalf("expected id=p1 (product), got %q", resp.ID)
+	}
+	if strings.Contains(out, "SECRET-KEY") {
+		t.Fatal("license key should not appear in JSON output")
+	}
+}
+
+func TestDecrement_JSON(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{})
+	})
+
+	cmd := testutil.Command(newDecrementCmd(), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--product", "p1", "--key", "SECRET-KEY"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+	var resp struct {
+		Success bool   `json:"success"`
+		ID      string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if resp.ID != "p1" {
+		t.Fatalf("expected id=p1 (product), got %q", resp.ID)
+	}
+	if strings.Contains(out, "SECRET-KEY") {
+		t.Fatal("license key should not appear in JSON output")
 	}
 }
 

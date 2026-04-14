@@ -29,7 +29,7 @@ func newLogoutCmd() *cobra.Command {
 				return err
 			}
 			if !confirmed {
-				return cmdutil.PrintCancelledAction(opts, "remove stored API token")
+				return cmdutil.PrintCancelledAction(opts, "remove stored API token", "")
 			}
 			if opts.DryRun {
 				return cmdutil.PrintDryRunAction(opts, "remove stored API token")

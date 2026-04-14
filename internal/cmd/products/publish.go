@@ -14,7 +14,7 @@ func newPublishCmd() *cobra.Command {
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
-			return cmdutil.RunRequestWithSuccess(opts, "Publishing product...", "PUT", cmdutil.JoinPath("products", args[0], "enable"), url.Values{}, "Product "+args[0]+" published.")
+			return cmdutil.RunRequestWithSuccess(opts, "Publishing product...", "PUT", cmdutil.JoinPath("products", args[0], "enable"), url.Values{}, args[0], "Product "+args[0]+" published.")
 		},
 	}
 }

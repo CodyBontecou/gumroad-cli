@@ -100,8 +100,8 @@ func RunRequestDecoded[T any](opts Options, spinnerMessage, method, path string,
 }
 
 // RunRequestWithSuccess executes a mutating API request and prints a success
-// message in human mode.
-func RunRequestWithSuccess(opts Options, spinnerMessage, method, path string, params url.Values, successMessage string) error {
+// message in human mode. The id identifies the affected resource in JSON output.
+func RunRequestWithSuccess(opts Options, spinnerMessage, method, path string, params url.Values, id, successMessage string) error {
 	if opts.DryRun && method != http.MethodGet {
 		return PrintDryRunRequest(opts, method, path, params)
 	}
@@ -110,7 +110,7 @@ func RunRequestWithSuccess(opts Options, spinnerMessage, method, path string, pa
 	if err != nil {
 		return err
 	}
-	return renderMutationSuccess(opts, data, successMessage)
+	return renderMutationSuccess(opts, data, id, successMessage)
 }
 
 // RunWithToken executes a caller-provided client operation with a
@@ -159,15 +159,17 @@ func normalizeJSONBody(data json.RawMessage) json.RawMessage {
 type mutationOutput struct {
 	Success   bool            `json:"success"`
 	Message   string          `json:"message"`
+	ID        string          `json:"id,omitempty"`
 	Result    json.RawMessage `json:"result"`
 	Cancelled bool            `json:"cancelled,omitempty"`
 	Action    string          `json:"action,omitempty"`
 }
 
-func printMutationJSON(opts Options, data json.RawMessage, successMessage string) error {
+func printMutationJSON(opts Options, data json.RawMessage, id, successMessage string) error {
 	return printMutationPayload(opts, mutationOutput{
 		Success: true,
 		Message: successMessage,
+		ID:      id,
 		Result:  normalizeJSONBody(data),
 	})
 }
@@ -182,9 +184,9 @@ func printMutationPayload(opts Options, payload mutationOutput) error {
 	return output.PrintJSON(opts.Out(), data, opts.JQExpr)
 }
 
-func renderMutationSuccess(opts Options, data json.RawMessage, successMessage string) error {
+func renderMutationSuccess(opts Options, data json.RawMessage, id, successMessage string) error {
 	if opts.UsesJSONOutput() {
-		return printMutationJSON(opts, data, successMessage)
+		return printMutationJSON(opts, data, id, successMessage)
 	}
 	if opts.PlainOutput {
 		return output.PrintPlain(opts.Out(), [][]string{{"true", successMessage}})
