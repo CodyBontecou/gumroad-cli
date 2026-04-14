@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -15,9 +16,12 @@ import (
 func TestDashPrefixedIDArgs(t *testing.T) {
 	bin := buildBinary(t)
 
+	var mu sync.Mutex
 	var lastPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		lastPath = r.URL.Path
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"success":          true,
@@ -87,7 +91,9 @@ func TestDashPrefixedIDArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			mu.Lock()
 			lastPath = ""
+			mu.Unlock()
 			args := append(tt.args, "--no-color")
 			out, err := runGR(t, bin, env, args...)
 			if err != nil {
@@ -100,11 +106,14 @@ func TestDashPrefixedIDArgs(t *testing.T) {
 				// Other errors (e.g. API returns unexpected shape) are acceptable —
 				// the point is that the ID was passed through to the API.
 			}
-			if lastPath == "" {
+			mu.Lock()
+			path := lastPath
+			mu.Unlock()
+			if path == "" {
 				t.Fatalf("API was never called — dash-prefixed ID %q was not passed through", dashID)
 			}
-			if !strings.Contains(lastPath, dashID) {
-				t.Errorf("API path %q does not contain expected ID %q", lastPath, dashID)
+			if !strings.Contains(path, dashID) {
+				t.Errorf("API path %q does not contain expected ID %q", path, dashID)
 			}
 		})
 	}
