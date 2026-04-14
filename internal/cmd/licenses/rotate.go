@@ -27,6 +27,14 @@ func newRotateCmd() *cobra.Command {
 				return err
 			}
 
+			ok, err := cmdutil.ConfirmAction(opts, "Rotate license key for product "+product+"?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return cmdutil.PrintCancelledAction(opts, "rotate license key", product)
+			}
+
 			params := url.Values{}
 			params.Set("product_id", product)
 			params.Set("license_key", key)
