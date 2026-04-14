@@ -305,7 +305,7 @@ func TestRunRequestWithSuccess(t *testing.T) {
 	opts.Version = "test"
 	var out bytes.Buffer
 	opts.Stdout = &out
-	if err := RunRequestWithSuccess(opts, "Updating...", "PUT", "/licenses/enable", nil, "updated"); err != nil {
+	if err := RunRequestWithSuccess(opts, "Updating...", "PUT", "/licenses/enable", nil, "prod_abc", "updated"); err != nil {
 		t.Fatalf("RunRequestWithSuccess failed: %v", err)
 	}
 	if !strings.Contains(out.String(), "updated") {

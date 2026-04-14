@@ -25,7 +25,7 @@ func newShipCmd() *cobra.Command {
 				params.Set("tracking_url", trackingURL)
 			}
 
-			return cmdutil.RunRequestWithSuccess(opts, "Marking as shipped...", "PUT", cmdutil.JoinPath("sales", args[0], "mark_as_shipped"), params, "Sale "+args[0]+" marked as shipped.")
+			return cmdutil.RunRequestWithSuccess(opts, "Marking as shipped...", "PUT", cmdutil.JoinPath("sales", args[0], "mark_as_shipped"), params, args[0], "Sale "+args[0]+" marked as shipped.")
 		},
 	}
 

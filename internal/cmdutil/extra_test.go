@@ -181,7 +181,7 @@ func TestPrintCancelledAction_JSONOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := PrintCancelledAction(opts, "delete product prod_123"); err != nil {
+	if err := PrintCancelledAction(opts, "delete product prod_123", "prod_123"); err != nil {
 		t.Fatalf("PrintCancelledAction returned error: %v", err)
 	}
 
@@ -189,6 +189,7 @@ func TestPrintCancelledAction_JSONOutput(t *testing.T) {
 		Success   bool            `json:"success"`
 		Cancelled bool            `json:"cancelled"`
 		Message   string          `json:"message"`
+		ID        string          `json:"id"`
 		Action    string          `json:"action"`
 		Result    json.RawMessage `json:"result"`
 	}
@@ -200,6 +201,9 @@ func TestPrintCancelledAction_JSONOutput(t *testing.T) {
 	}
 	if !resp.Cancelled {
 		t.Fatal("cancelled action should report cancelled=true")
+	}
+	if resp.ID != "prod_123" {
+		t.Fatalf("unexpected id %q", resp.ID)
 	}
 	if resp.Message != "Cancelled: delete product prod_123." {
 		t.Fatalf("unexpected message %q", resp.Message)
@@ -218,7 +222,7 @@ func TestPrintCancelledAction_PlainOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := PrintCancelledAction(opts, "delete product prod_123"); err != nil {
+	if err := PrintCancelledAction(opts, "delete product prod_123", "prod_123"); err != nil {
 		t.Fatalf("PrintCancelledAction returned error: %v", err)
 	}
 	if strings.TrimSpace(out.String()) != "false\tCancelled: delete product prod_123." {
@@ -233,7 +237,7 @@ func TestPrintCancelledAction_DefaultOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := PrintCancelledAction(opts, "delete product prod_123"); err != nil {
+	if err := PrintCancelledAction(opts, "delete product prod_123", "prod_123"); err != nil {
 		t.Fatalf("PrintCancelledAction returned error: %v", err)
 	}
 	if strings.TrimSpace(out.String()) != "Cancelled: delete product prod_123." {
@@ -406,19 +410,20 @@ func TestRunRequestWithSuccess_JSONOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := RunRequestWithSuccess(opts, "Creating...", "POST", "/variants", nil, "Variant created."); err != nil {
+	if err := RunRequestWithSuccess(opts, "Creating...", "POST", "/variants", nil, "var_123", "Variant created."); err != nil {
 		t.Fatalf("RunRequestWithSuccess failed: %v", err)
 	}
 
 	var resp struct {
 		Success bool                   `json:"success"`
 		Message string                 `json:"message"`
+		ID      string                 `json:"id"`
 		Result  map[string]interface{} `json:"result"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
 		t.Fatalf("mutation JSON output is invalid: %v\n%s", err, out.String())
 	}
-	if !resp.Success || resp.Message != "Variant created." {
+	if !resp.Success || resp.Message != "Variant created." || resp.ID != "var_123" {
 		t.Fatalf("unexpected mutation envelope: %+v", resp)
 	}
 	variant, ok := resp.Result["variant"].(map[string]interface{})
@@ -438,7 +443,7 @@ func TestRunRequestWithSuccess_JQOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := RunRequestWithSuccess(opts, "Creating...", "POST", "/variants", nil, "Variant created."); err != nil {
+	if err := RunRequestWithSuccess(opts, "Creating...", "POST", "/variants", nil, "var_123", "Variant created."); err != nil {
 		t.Fatalf("RunRequestWithSuccess failed: %v", err)
 	}
 
@@ -458,7 +463,7 @@ func TestRunRequestWithSuccess_PlainOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := RunRequestWithSuccess(opts, "Updating...", "PUT", "/licenses/enable", nil, "License enabled."); err != nil {
+	if err := RunRequestWithSuccess(opts, "Updating...", "PUT", "/licenses/enable", nil, "prod_abc", "License enabled."); err != nil {
 		t.Fatalf("RunRequestWithSuccess failed: %v", err)
 	}
 
@@ -473,7 +478,7 @@ func TestRunRequestWithSuccess_DryRunSkipsAuth(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := RunRequestWithSuccess(opts, "Deleting...", "DELETE", "/products/prod_123", nil, "Product deleted."); err != nil {
+	if err := RunRequestWithSuccess(opts, "Deleting...", "DELETE", "/products/prod_123", nil, "prod_123", "Product deleted."); err != nil {
 		t.Fatalf("RunRequestWithSuccess failed: %v", err)
 	}
 

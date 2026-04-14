@@ -202,7 +202,7 @@ func TestPrintCancelledAction_QuietNoOutput(t *testing.T) {
 	var out bytes.Buffer
 	opts.Stdout = &out
 
-	if err := PrintCancelledAction(opts, "delete product prod_123"); err != nil {
+	if err := PrintCancelledAction(opts, "delete product prod_123", "prod_123"); err != nil {
 		t.Fatalf("PrintCancelledAction returned error: %v", err)
 	}
 	if out.Len() != 0 {

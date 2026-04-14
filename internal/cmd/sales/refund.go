@@ -49,7 +49,7 @@ func newRefundCmd() *cobra.Command {
 				if isPartial {
 					action = fmt.Sprintf("refund %s on sale %s", amountDesc, args[0])
 				}
-				return cmdutil.PrintCancelledAction(opts, action)
+				return cmdutil.PrintCancelledAction(opts, action, args[0])
 			}
 
 			params := url.Values{}
@@ -59,7 +59,7 @@ func newRefundCmd() *cobra.Command {
 				successMessage = fmt.Sprintf("Refunded %s on sale %s.", amountDesc, args[0])
 			}
 
-			return cmdutil.RunRequestWithSuccess(opts, "Refunding sale...", "PUT", cmdutil.JoinPath("sales", args[0], "refund"), params, successMessage)
+			return cmdutil.RunRequestWithSuccess(opts, "Refunding sale...", "PUT", cmdutil.JoinPath("sales", args[0], "refund"), params, args[0], successMessage)
 		},
 	}
 

@@ -22,10 +22,10 @@ Note: This only succeeds when the token's OAuth app matches the subscription's a
 				return err
 			}
 			if !ok {
-				return cmdutil.PrintCancelledAction(opts, "delete webhook "+args[0])
+				return cmdutil.PrintCancelledAction(opts, "delete webhook "+args[0], args[0])
 			}
 
-			return cmdutil.RunRequestWithSuccess(opts, "Deleting webhook...", "DELETE", cmdutil.JoinPath("resource_subscriptions", args[0]), url.Values{}, "Webhook "+args[0]+" deleted.")
+			return cmdutil.RunRequestWithSuccess(opts, "Deleting webhook...", "DELETE", cmdutil.JoinPath("resource_subscriptions", args[0]), url.Values{}, args[0], "Webhook "+args[0]+" deleted.")
 		},
 	}
 }

@@ -14,7 +14,7 @@ func newResendReceiptCmd() *cobra.Command {
 		Args:  cmdutil.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
-			return cmdutil.RunRequestWithSuccess(opts, "Resending receipt...", "POST", cmdutil.JoinPath("sales", args[0], "resend_receipt"), url.Values{}, "Receipt resent for sale "+args[0]+".")
+			return cmdutil.RunRequestWithSuccess(opts, "Resending receipt...", "POST", cmdutil.JoinPath("sales", args[0], "resend_receipt"), url.Values{}, args[0], "Receipt resent for sale "+args[0]+".")
 		},
 	}
 }
