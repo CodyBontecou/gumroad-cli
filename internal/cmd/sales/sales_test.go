@@ -618,6 +618,23 @@ func TestView_Plain(t *testing.T) {
 	}
 }
 
+func TestView_PlainWithOrderID(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"sale":{"id":"s1","email":"a@example.com","product_name":"Art","formatted_total_price":"$10","created_at":"2024-01-15","order_id":535572601}}`))
+	})
+
+	cmd := testutil.Command(newViewCmd(), testutil.PlainOutput())
+	var execErr error
+	out := testutil.CaptureStdout(func() { execErr = cmd.RunE(cmd, []string{"s1"}) })
+	if execErr != nil {
+		t.Fatalf("RunE failed: %v", execErr)
+	}
+	if !strings.Contains(out, "535572601") {
+		t.Errorf("plain view should include order ID: %q", out)
+	}
+}
+
 func TestView_ShippedStatus(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.JSON(t, w, map[string]any{

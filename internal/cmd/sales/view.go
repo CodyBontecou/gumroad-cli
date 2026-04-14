@@ -39,9 +39,11 @@ func newViewCmd() *cobra.Command {
 				style := opts.Style()
 
 				if opts.PlainOutput {
-					return output.PrintPlain(opts.Out(), [][]string{
-						{s.ID, s.Email, s.ProductName, s.FormattedTotal, s.CreatedAt, fmt.Sprintf("refunded=%v", s.Refunded)},
-					})
+					row := []string{s.ID, s.Email, s.ProductName, s.FormattedTotal, s.CreatedAt, fmt.Sprintf("refunded=%v", s.Refunded)}
+					if s.OrderID > 0 {
+						row = append(row, fmt.Sprintf("%d", s.OrderID))
+					}
+					return output.PrintPlain(opts.Out(), [][]string{row})
 				}
 
 				if err := output.Writef(opts.Out(), "%s  %s\n", style.Bold(s.ProductName), s.FormattedTotal); err != nil {
