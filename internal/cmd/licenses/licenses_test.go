@@ -352,7 +352,7 @@ func TestDecrement_CorrectEndpoint(t *testing.T) {
 		testutil.JSON(t, w, map[string]any{})
 	})
 
-	cmd := newDecrementCmd()
+	cmd := testutil.Command(newDecrementCmd(), testutil.Yes(true))
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
@@ -368,7 +368,7 @@ func TestRotate_ReturnsNewKey(t *testing.T) {
 		})
 	})
 
-	cmd := testutil.Command(newRotateCmd(), testutil.Quiet(false))
+	cmd := testutil.Command(newRotateCmd(), testutil.Yes(true), testutil.Quiet(false))
 	cmd.SetArgs([]string{"--product", "p1", "--key", "OLD-KEY"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
@@ -408,7 +408,7 @@ func TestDecrement_Output(t *testing.T) {
 		testutil.JSON(t, w, map[string]any{})
 	})
 
-	cmd := testutil.Command(newDecrementCmd(), testutil.Quiet(false))
+	cmd := testutil.Command(newDecrementCmd(), testutil.Yes(true), testutil.Quiet(false))
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	if !strings.Contains(out, "decremented") {
@@ -423,7 +423,7 @@ func TestRotate_JSON(t *testing.T) {
 		})
 	})
 
-	cmd := testutil.Command(newRotateCmd(), testutil.JSONOutput())
+	cmd := testutil.Command(newRotateCmd(), testutil.Yes(true), testutil.JSONOutput())
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	var resp struct {
@@ -460,7 +460,7 @@ func TestRotate_Plain(t *testing.T) {
 		})
 	})
 
-	cmd := testutil.Command(newRotateCmd(), testutil.PlainOutput())
+	cmd := testutil.Command(newRotateCmd(), testutil.Yes(true), testutil.PlainOutput())
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	if !strings.Contains(out, "NEW-PLAIN") {
@@ -475,7 +475,7 @@ func TestRotate_QuietStillPrintsNewKey(t *testing.T) {
 		})
 	})
 
-	cmd := testutil.Command(newRotateCmd(), testutil.Quiet(true))
+	cmd := testutil.Command(newRotateCmd(), testutil.Yes(true), testutil.Quiet(true))
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	if strings.TrimSpace(out) != "NEW-QUIET" {
@@ -534,7 +534,7 @@ func TestDecrement_JSON(t *testing.T) {
 		testutil.JSON(t, w, map[string]any{})
 	})
 
-	cmd := testutil.Command(newDecrementCmd(), testutil.JSONOutput())
+	cmd := testutil.Command(newDecrementCmd(), testutil.Yes(true), testutil.JSONOutput())
 	cmd.SetArgs([]string{"--product", "p1", "--key", "SECRET-KEY"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	var resp struct {
@@ -586,7 +586,7 @@ func TestDecrement_APIError(t *testing.T) {
 		testutil.JSON(t, w, map[string]any{"message": "Error"})
 	})
 
-	cmd := newDecrementCmd()
+	cmd := testutil.Command(newDecrementCmd(), testutil.Yes(true))
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	err := cmd.Execute()
 	if err == nil {
@@ -600,7 +600,7 @@ func TestRotate_APIError(t *testing.T) {
 		testutil.JSON(t, w, map[string]any{"message": "Error"})
 	})
 
-	cmd := newRotateCmd()
+	cmd := testutil.Command(newRotateCmd(), testutil.Yes(true))
 	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
 	err := cmd.Execute()
 	if err == nil {
@@ -660,5 +660,37 @@ func TestRotate_FlagValidation(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error without --key")
+	}
+}
+
+func TestRotate_NoInputRequiresYes(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not reach API")
+	})
+
+	cmd := testutil.Command(newRotateCmd(), testutil.NoInput(true))
+	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error without confirmation")
+	}
+	if !strings.Contains(err.Error(), "--yes") {
+		t.Errorf("error should mention --yes: %v", err)
+	}
+}
+
+func TestDecrement_NoInputRequiresYes(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not reach API")
+	})
+
+	cmd := testutil.Command(newDecrementCmd(), testutil.NoInput(true))
+	cmd.SetArgs([]string{"--product", "p1", "--key", "K1"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error without confirmation")
+	}
+	if !strings.Contains(err.Error(), "--yes") {
+		t.Errorf("error should mention --yes: %v", err)
 	}
 }
