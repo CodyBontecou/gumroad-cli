@@ -114,6 +114,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(completion.NewCompletionCmd())
 	cmd.AddCommand(skill.NewSkillCmd())
 	cmdutil.PropagateExamples(cmd)
+	cmdutil.AllowDashIDs(cmd)
 
 	return cmd
 }
