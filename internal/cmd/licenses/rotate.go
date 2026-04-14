@@ -31,6 +31,10 @@ func newRotateCmd() *cobra.Command {
 			params.Set("product_id", product)
 			params.Set("license_key", key)
 
+			if opts.UsesJSONOutput() {
+				return cmdutil.RunRequestWithSuccess(opts, "Rotating license key...", "PUT", "/licenses/rotate", params, product, "License key rotated.")
+			}
+
 			return cmdutil.RunRequest(opts, "Rotating license key...", "PUT", "/licenses/rotate", params, func(data json.RawMessage) error {
 				var resp struct {
 					Purchase struct {
