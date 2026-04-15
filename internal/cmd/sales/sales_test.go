@@ -605,16 +605,56 @@ func TestView_Plain(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.JSON(t, w, map[string]any{
 			"sale": map[string]any{
-				"id": "s1", "email": "a@b.com", "product_name": "Art",
+				"id": "s1", "email": "a@example.com", "product_name": "Art",
 				"formatted_total_price": "$10", "created_at": "2024-01-15",
 			},
 		})
 	})
 
 	cmd := testutil.Command(newViewCmd(), testutil.PlainOutput())
-	out := testutil.CaptureStdout(func() { _ = cmd.RunE(cmd, []string{"s1"}) })
-	if !strings.Contains(out, "s1") || !strings.Contains(out, "Art") {
-		t.Errorf("plain view missing data: %q", out)
+	var execErr error
+	out := testutil.CaptureStdout(func() { execErr = cmd.RunE(cmd, []string{"s1"}) })
+	if execErr != nil {
+		t.Fatalf("RunE failed: %v", execErr)
+	}
+	cols := strings.Split(strings.TrimRight(out, "\n"), "\t")
+	if len(cols) != 7 {
+		t.Fatalf("expected 7 tab-separated columns, got %d: %q", len(cols), out)
+	}
+	if cols[0] != "s1" || cols[2] != "Art" || cols[3] != "$10" {
+		t.Errorf("plain view data mismatch: %q", cols)
+	}
+	if cols[6] != "" {
+		t.Errorf("order_id column should be empty when absent, got %q", cols[6])
+	}
+}
+
+func TestView_PlainWithOrderID(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{
+			"sale": map[string]any{
+				"id": "s1", "email": "a@example.com", "product_name": "Art",
+				"formatted_total_price": "$10", "created_at": "2024-01-15",
+				"order_id": 535572601,
+			},
+		})
+	})
+
+	cmd := testutil.Command(newViewCmd(), testutil.PlainOutput())
+	var execErr error
+	out := testutil.CaptureStdout(func() { execErr = cmd.RunE(cmd, []string{"s1"}) })
+	if execErr != nil {
+		t.Fatalf("RunE failed: %v", execErr)
+	}
+	cols := strings.Split(strings.TrimRight(out, "\n"), "\t")
+	if len(cols) != 7 {
+		t.Fatalf("expected 7 tab-separated columns, got %d: %q", len(cols), out)
+	}
+	if cols[0] != "s1" || cols[2] != "Art" || cols[3] != "$10" {
+		t.Errorf("plain view data mismatch: %q", cols)
+	}
+	if cols[6] != "535572601" {
+		t.Errorf("order_id column should be 535572601, got %q", cols[6])
 	}
 }
 
@@ -636,21 +676,44 @@ func TestView_ShippedStatus(t *testing.T) {
 	}
 }
 
-func TestView_WithOrderID(t *testing.T) {
-	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
-		testutil.JSON(t, w, map[string]any{
-			"sale": map[string]any{
-				"id": "s1", "email": "a@b.com", "product_name": "Art",
-				"formatted_total_price": "$10", "created_at": "2024-01-15",
-				"order_id": "ORD-999",
-			},
-		})
-	})
+func TestView_OrderID(t *testing.T) {
+	// Use raw JSON to test wire formats that Go's encoding/json normalizes away
+	// (e.g. 535572601.0 as a float, explicit null).
+	tests := []struct {
+		name      string
+		rawJSON   string // raw JSON response body
+		wantShown string // non-empty means Order: line should contain this
+	}{
+		{"integer", `{"success":true,"sale":{"id":"s1","email":"a@example.com","product_name":"Art","formatted_total_price":"$10","created_at":"2024-01-15","order_id":535572601}}`, "535572601"},
+		{"float", `{"success":true,"sale":{"id":"s1","email":"a@example.com","product_name":"Art","formatted_total_price":"$10","created_at":"2024-01-15","order_id":535572601.0}}`, "535572601"},
+		{"zero", `{"success":true,"sale":{"id":"s1","email":"a@example.com","product_name":"Art","formatted_total_price":"$10","created_at":"2024-01-15","order_id":0}}`, ""},
+		{"null", `{"success":true,"sale":{"id":"s1","email":"a@example.com","product_name":"Art","formatted_total_price":"$10","created_at":"2024-01-15","order_id":null}}`, ""},
+		{"absent", `{"success":true,"sale":{"id":"s1","email":"a@example.com","product_name":"Art","formatted_total_price":"$10","created_at":"2024-01-15"}}`, ""},
+	}
 
-	cmd := newViewCmd()
-	out := testutil.CaptureStdout(func() { _ = cmd.RunE(cmd, []string{"s1"}) })
-	if !strings.Contains(out, "ORD-999") {
-		t.Errorf("should show order ID: %q", out)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.Setup(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.rawJSON))
+			})
+
+			cmd := newViewCmd()
+			var execErr error
+			out := testutil.CaptureStdout(func() { execErr = cmd.RunE(cmd, []string{"s1"}) })
+			if execErr != nil {
+				t.Fatalf("RunE failed: %v", execErr)
+			}
+			if tt.wantShown != "" {
+				if !strings.Contains(out, "Order: "+tt.wantShown) {
+					t.Errorf("should show Order: %s, got: %q", tt.wantShown, out)
+				}
+			} else {
+				if strings.Contains(out, "Order:") {
+					t.Errorf("should not show Order line, got: %q", out)
+				}
+			}
+		})
 	}
 }
 
