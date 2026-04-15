@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Install script for the Gumroad CLI.
 # Usage:
-#   curl -fsSL https://gumroad.com/install-cli | bash
+#   curl -fsSL https://gumroad.com/install-cli.sh | bash
 #   GUMROAD_BIN_DIR=~/.bin bash install.sh
 
 REPO="antiwork/gumroad-cli"

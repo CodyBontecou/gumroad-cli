@@ -15,7 +15,7 @@ brew install --cask antiwork/cli/gumroad
 **Shell script** (macOS, Linux, Windows via Git Bash):
 
 ```sh
-curl -fsSL https://gumroad.com/install-cli | bash
+curl -fsSL https://gumroad.com/install-cli.sh | bash
 ```
 
 **Go**:
