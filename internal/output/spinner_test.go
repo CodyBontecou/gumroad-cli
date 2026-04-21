@@ -28,6 +28,7 @@ func TestSpinner_TTY_ActivatesAndStops(t *testing.T) {
 	orig := isSpinnerTerminal
 	isSpinnerTerminal = func(io.Writer) bool { return true }
 	defer func() { isSpinnerTerminal = orig }()
+	t.Setenv("TERM", "xterm-256color")
 
 	s := NewSpinner("loading")
 	s.Start()
@@ -56,6 +57,7 @@ func TestSpinner_DoubleStop(t *testing.T) {
 	orig := isSpinnerTerminal
 	isSpinnerTerminal = func(io.Writer) bool { return true }
 	defer func() { isSpinnerTerminal = orig }()
+	t.Setenv("TERM", "xterm-256color")
 
 	s := NewSpinner("loading")
 	s.Start()
@@ -123,4 +125,63 @@ func TestNewSpinner(t *testing.T) {
 	if s.active {
 		t.Error("spinner should not be active by default")
 	}
+}
+
+func TestSpinner_SetMessage_UpdatesField(t *testing.T) {
+	s := NewSpinner("initial")
+	s.SetMessage("updated")
+
+	s.mu.Lock()
+	got := s.message
+	s.mu.Unlock()
+
+	if got != "updated" {
+		t.Errorf("message = %q, want %q", got, "updated")
+	}
+}
+
+func TestSpinner_SetMessage_BeforeStartAndAfterStop(t *testing.T) {
+	s := NewSpinner("initial")
+	// Before Start: field updates but no rendering goroutine exists.
+	s.SetMessage("before-start")
+
+	orig := isSpinnerTerminal
+	isSpinnerTerminal = func(io.Writer) bool { return true }
+	defer func() { isSpinnerTerminal = orig }()
+	t.Setenv("TERM", "xterm-256color")
+	s.Start()
+	time.Sleep(10 * time.Millisecond)
+	s.Stop()
+
+	// After Stop: SetMessage must not panic or race.
+	s.SetMessage("after-stop")
+
+	s.mu.Lock()
+	got := s.message
+	s.mu.Unlock()
+	if got != "after-stop" {
+		t.Errorf("message = %q, want %q", got, "after-stop")
+	}
+}
+
+func TestSpinner_SetMessage_ConcurrentRenders(t *testing.T) {
+	orig := isSpinnerTerminal
+	isSpinnerTerminal = func(io.Writer) bool { return true }
+	defer func() { isSpinnerTerminal = orig }()
+	t.Setenv("TERM", "xterm-256color")
+
+	s := NewSpinnerTo("start", io.Discard)
+	s.Start()
+	defer s.Stop()
+
+	// Race detector catches unsynchronized access against the
+	// render goroutine that reads s.message on every tick.
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 200; i++ {
+			s.SetMessage("msg")
+		}
+		close(done)
+	}()
+	<-done
 }
