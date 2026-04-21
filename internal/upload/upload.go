@@ -220,9 +220,11 @@ func planFromStat(path string, info os.FileInfo, opts Options) (Plan, error) {
 }
 
 // Upload runs the full multipart flow and returns the canonical file_url.
-// Every HTTP call — presign, part PUTs, complete, abort — is bounded by ctx.
+// presign, part PUTs, and /files/complete are bounded by ctx; /files/abort
+// runs under an independent 10-second timeout so cleanup still fires when
+// ctx is already canceled, which also means ctx cannot shorten or skip it.
 // The *api.Client supplies auth and base URL only; its baked-in context is
-// ignored so upload cancellation actually bounds all in-flight work.
+// ignored so ctx bounds all in-flight work except that abort cleanup.
 func Upload(ctx context.Context, client *api.Client, path string, opts Options) (string, error) {
 	// Stat first: os.Open on a FIFO/device would block the process until a
 	// writer appears (Unix semantics, not bound by ctx). Checking the mode
