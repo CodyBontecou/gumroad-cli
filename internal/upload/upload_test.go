@@ -1131,6 +1131,70 @@ func TestUpload_PartTimeoutFiresOnStalledS3(t *testing.T) {
 	}
 }
 
+func TestPutPart_Follows307RedirectWithBody(t *testing.T) {
+	path := writeFile(t, 16)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open fixture: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	const (
+		offset = int64(3)
+		size   = int64(5)
+	)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	wantBody := data[offset : offset+size]
+
+	var redirectURL string
+	var redirectCalls atomic.Int32
+	var finalCalls atomic.Int32
+	s3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/redirect":
+			redirectCalls.Add(1)
+			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		case "/final":
+			finalCalls.Add(1)
+			if r.Method != http.MethodPut {
+				t.Errorf("method = %s, want PUT", r.Method)
+			}
+			gotBody, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read redirected body: %v", err)
+				http.Error(w, "read body", http.StatusInternalServerError)
+				return
+			}
+			if !bytes.Equal(gotBody, wantBody) {
+				t.Errorf("redirected body = %v, want %v", gotBody, wantBody)
+			}
+			w.Header().Set("ETag", `"redirect-etag"`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer s3.Close()
+	redirectURL = s3.URL + "/final"
+
+	etag, err := putPart(context.Background(), s3.Client(), s3.URL+"/redirect", f, offset, size)
+	if err != nil {
+		t.Fatalf("putPart: %v", err)
+	}
+	if etag != "redirect-etag" {
+		t.Errorf("etag = %q, want redirect-etag", etag)
+	}
+	if redirectCalls.Load() != 1 {
+		t.Errorf("redirectCalls = %d, want 1", redirectCalls.Load())
+	}
+	if finalCalls.Load() != 1 {
+		t.Errorf("finalCalls = %d, want 1", finalCalls.Load())
+	}
+}
+
 func TestUpload_SlowProgressCallbackDoesNotStallWorkers(t *testing.T) {
 	// With Concurrency=1 and a progress callback that blocks, earlier
 	// designs held the semaphore slot across the callback and froze the

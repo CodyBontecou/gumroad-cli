@@ -166,7 +166,7 @@ type Options struct {
 	// never run concurrently and the value never goes backwards. A slow or
 	// blocked callback does NOT stall part uploads; it also does not keep
 	// Upload from returning. The last callback may therefore run after
-	// Upload has already returned the file URL.
+	// Upload has already returned — including after it returns an error.
 	Progress func(bytesUploaded int64)
 
 	// PartTimeout bounds each part PUT attempt (including retries). Zero
@@ -227,8 +227,9 @@ func Upload(ctx context.Context, client *api.Client, path string, opts Options) 
 	// Stat first: os.Open on a FIFO/device would block the process until a
 	// writer appears (Unix semantics, not bound by ctx). Checking the mode
 	// up front turns that hang into a clear error. A TOCTOU race where the
-	// path is swapped between Stat and Open is caught by the post-open
-	// f.Stat() check below.
+	// path is swapped between Stat and Open is still possible; the post-open
+	// f.Stat() check below only catches non-regular replacements if os.Open
+	// itself returns instead of blocking first.
 	preInfo, err := os.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("could not stat file: %w", err)
@@ -624,6 +625,9 @@ func putPart(ctx context.Context, client *http.Client, presignedURL string, f *o
 		return "", fmt.Errorf("could not create request: %w", err)
 	}
 	req.ContentLength = size
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(io.NewSectionReader(f, offset, size)), nil
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -668,10 +672,12 @@ func readBoundedBody(r io.Reader, maxBytes int64, timeout time.Duration) []byte 
 		b, _ := io.ReadAll(io.LimitReader(r, maxBytes))
 		result <- b
 	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case b := <-result:
 		return b
-	case <-time.After(timeout):
+	case <-timer.C:
 		return nil
 	}
 }

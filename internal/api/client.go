@@ -79,9 +79,9 @@ func (c *Client) Post(path string, params url.Values) (json.RawMessage, error) {
 }
 
 // PostWithContext runs a POST under ctx instead of the client's baked-in
-// context. Use this when a single call's lifetime must be bounded
-// independently — e.g. best-effort cleanup that should honor the caller's
-// cancellation.
+// context. Use this when a single call needs its own independent lifetime —
+// e.g. best-effort cleanup that must still run after the original request
+// context has been canceled.
 func (c *Client) PostWithContext(ctx context.Context, path string, params url.Values) (json.RawMessage, error) {
 	return c.doWithContext(ctx, "POST", path, params)
 }
