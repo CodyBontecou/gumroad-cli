@@ -30,14 +30,17 @@ type plannedProductUpload struct {
 type existingProductFile struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	URL  string `json:"url"`
 }
 
 type productFileUpdatePlan struct {
-	Existing  []existingProductFile
 	Preserved []existingProductFile
 	Removed   []existingProductFile
 	Uploads   []requestedProductUpload
+}
+
+type productFileSelections struct {
+	Keep   map[string]struct{}
+	Remove map[string]struct{}
 }
 
 type productFilesResponse struct {
@@ -109,36 +112,30 @@ func planProductFileUpdate(
 	cmd *cobra.Command,
 	existing []existingProductFile,
 	uploads []requestedProductUpload,
-	keepIDs, removeIDs []string,
+	selections productFileSelections,
 	replaceFiles bool,
 ) (productFileUpdatePlan, error) {
-	keepSet, removeSet, err := validateProductFileSelections(cmd, keepIDs, removeIDs, replaceFiles)
-	if err != nil {
-		return productFileUpdatePlan{}, err
-	}
-
 	existingByID := make(map[string]existingProductFile, len(existing))
 	for _, file := range existing {
 		existingByID[file.ID] = file
 	}
 
-	if err := ensureKnownFileIDs(cmd, "--keep-file", keepSet, existingByID); err != nil {
+	if err := ensureKnownFileIDs(cmd, "--keep-file", selections.Keep, existingByID); err != nil {
 		return productFileUpdatePlan{}, err
 	}
-	if err := ensureKnownFileIDs(cmd, "--remove-file", removeSet, existingByID); err != nil {
+	if err := ensureKnownFileIDs(cmd, "--remove-file", selections.Remove, existingByID); err != nil {
 		return productFileUpdatePlan{}, err
 	}
 
 	plan := productFileUpdatePlan{
-		Existing: existing,
-		Uploads:  uploads,
+		Uploads: uploads,
 	}
 
 	for _, file := range existing {
-		_, explicitlyRemoved := removeSet[file.ID]
+		_, explicitlyRemoved := selections.Remove[file.ID]
 		preserve := !replaceFiles
 		if replaceFiles {
-			_, preserve = keepSet[file.ID]
+			_, preserve = selections.Keep[file.ID]
 		}
 		if explicitlyRemoved {
 			preserve = false
@@ -198,9 +195,9 @@ func validateProductFileSelections(
 	cmd *cobra.Command,
 	keepIDs, removeIDs []string,
 	replaceFiles bool,
-) (map[string]struct{}, map[string]struct{}, error) {
+) (productFileSelections, error) {
 	if len(keepIDs) > 0 && !replaceFiles {
-		return nil, nil, cmdutil.UsageErrorf(cmd,
+		return productFileSelections{}, cmdutil.UsageErrorf(cmd,
 			"--keep-file can only be used together with --replace-files")
 	}
 
@@ -221,12 +218,15 @@ func validateProductFileSelections(
 	}
 	if len(conflicts) > 0 {
 		sort.Strings(conflicts)
-		return nil, nil, cmdutil.UsageErrorf(cmd,
+		return productFileSelections{}, cmdutil.UsageErrorf(cmd,
 			"cannot use --keep-file and --remove-file for the same id(s): %s",
 			joinComma(conflicts))
 	}
 
-	return keepSet, removeSet, nil
+	return productFileSelections{
+		Keep:   keepSet,
+		Remove: removeSet,
+	}, nil
 }
 
 func buildProductUpdateFilesPayload(plan productFileUpdatePlan, uploadURLs []string) []map[string]any {
@@ -412,10 +412,7 @@ func confirmProductFileRemoval(opts cmdutil.Options, productID string, removed [
 }
 
 func dryRunExistingProductFile(file existingProductFile) dryRunExistingFile {
-	return dryRunExistingFile{
-		ID:   file.ID,
-		Name: file.Name,
-	}
+	return dryRunExistingFile(file)
 }
 
 func formatExistingProductFileLabel(file existingProductFile) string {

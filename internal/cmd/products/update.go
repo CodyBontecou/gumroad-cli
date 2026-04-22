@@ -122,7 +122,8 @@ func newUpdateCmd() *cobra.Command {
 					args[0], "Product "+args[0]+" updated.")
 			}
 
-			if _, _, err := validateProductFileSelections(c, keepFileIDs, removeFileIDs, replaceFiles); err != nil {
+			selections, err := validateProductFileSelections(c, keepFileIDs, removeFileIDs, replaceFiles)
+			if err != nil {
 				return err
 			}
 
@@ -136,7 +137,7 @@ func newUpdateCmd() *cobra.Command {
 				return err
 			}
 
-			filePlan, err := planProductFileUpdate(c, existingFiles, requestedUploads, keepFileIDs, removeFileIDs, replaceFiles)
+			filePlan, err := planProductFileUpdate(c, existingFiles, requestedUploads, selections, replaceFiles)
 			if err != nil {
 				return err
 			}
