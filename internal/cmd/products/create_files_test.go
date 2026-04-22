@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,7 +21,7 @@ type createUploadServers struct {
 
 	mu               sync.Mutex
 	presignFilenames []string
-	productForm      url.Values
+	productJSON      map[string]any
 	s3Calls          int
 	completeCalls    int
 	presignCalls     int
@@ -59,12 +58,11 @@ func (srv *createUploadServers) dispatch(t *testing.T) http.HandlerFunc {
 	t.Helper()
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			t.Fatalf("parse form: %v", err)
-		}
-
 		switch r.URL.Path {
 		case "/files/presign":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse form: %v", err)
+			}
 			srv.mu.Lock()
 			srv.presignCalls++
 			n := srv.presignCalls
@@ -80,22 +78,30 @@ func (srv *createUploadServers) dispatch(t *testing.T) http.HandlerFunc {
 				},
 			})
 		case "/files/complete":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode complete body: %v", err)
+			}
 			srv.mu.Lock()
 			srv.completeCalls++
 			srv.mu.Unlock()
 
 			testutil.JSON(t, w, map[string]any{
-				"file_url": "https://example.com/uploads/" + r.PostForm.Get("upload_id"),
+				"file_url": "https://example.com/uploads/" + body["upload_id"].(string),
 			})
 		case "/products":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode product body: %v", err)
+			}
 			srv.mu.Lock()
-			srv.productForm = cloneURLValues(r.PostForm)
+			srv.productJSON = body
 			srv.mu.Unlock()
 
 			testutil.JSON(t, w, map[string]any{
 				"product": map[string]any{
 					"id":              "prod-upload",
-					"name":            r.PostForm.Get("name"),
+					"name":            body["name"],
 					"formatted_price": "$10",
 				},
 			})
@@ -106,18 +112,20 @@ func (srv *createUploadServers) dispatch(t *testing.T) http.HandlerFunc {
 	}
 }
 
-func (srv *createUploadServers) snapshot() ([]string, url.Values, int, int) {
+func (srv *createUploadServers) snapshot() ([]string, map[string]any, int, int) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
-	return append([]string(nil), srv.presignFilenames...), cloneURLValues(srv.productForm), srv.s3Calls, srv.completeCalls
-}
-
-func cloneURLValues(values url.Values) url.Values {
-	cloned := make(url.Values, len(values))
-	for key, current := range values {
-		cloned[key] = append([]string(nil), current...)
+	productJSON := map[string]any{}
+	if srv.productJSON != nil {
+		data, err := json.Marshal(srv.productJSON)
+		if err != nil {
+			panic(err)
+		}
+		if err := json.Unmarshal(data, &productJSON); err != nil {
+			panic(err)
+		}
 	}
-	return cloned
+	return append([]string(nil), srv.presignFilenames...), productJSON, srv.s3Calls, srv.completeCalls
 }
 
 func writeCreateFixture(t *testing.T, contents string) string {
@@ -128,6 +136,24 @@ func writeCreateFixture(t *testing.T, contents string) string {
 		t.Fatalf("write fixture: %v", err)
 	}
 	return path
+}
+
+func createJSONFiles(t *testing.T, body map[string]any) []map[string]any {
+	t.Helper()
+
+	raw, ok := body["files"].([]any)
+	if !ok {
+		t.Fatalf("files payload has wrong type: %T", body["files"])
+	}
+	files := make([]map[string]any, len(raw))
+	for i, current := range raw {
+		file, ok := current.(map[string]any)
+		if !ok {
+			t.Fatalf("files[%d] has wrong type: %T", i, current)
+		}
+		files[i] = file
+	}
+	return files
 }
 
 func TestCreate_WithFiles_UploadsAndPostsIndexedFields(t *testing.T) {
@@ -151,27 +177,31 @@ func TestCreate_WithFiles_UploadsAndPostsIndexedFields(t *testing.T) {
 
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
-	presignFilenames, productForm, s3Calls, completeCalls := srv.snapshot()
+	presignFilenames, productJSON, s3Calls, completeCalls := srv.snapshot()
 	if !reflect.DeepEqual(presignFilenames, []string{"Custom One.zip", filepath.Base(secondPath)}) {
 		t.Fatalf("presign filenames = %v", presignFilenames)
 	}
-	if got := productForm.Get("files[0][url]"); got != "https://example.com/uploads/up-1" {
-		t.Fatalf("files[0][url] = %q", got)
+	files := createJSONFiles(t, productJSON)
+	if len(files) != 2 {
+		t.Fatalf("files payload len = %d, want 2", len(files))
 	}
-	if got := productForm.Get("files[0][display_name]"); got != "Custom One.zip" {
-		t.Fatalf("files[0][display_name] = %q", got)
+	if got := files[0]["url"]; got != "https://example.com/uploads/up-1" {
+		t.Fatalf("files[0].url = %#v", got)
 	}
-	if got := productForm.Get("files[0][description]"); got != "" {
-		t.Fatalf("files[0][description] = %q, want empty", got)
+	if got := files[0]["display_name"]; got != "Custom One.zip" {
+		t.Fatalf("files[0].display_name = %#v", got)
 	}
-	if got := productForm.Get("files[1][url]"); got != "https://example.com/uploads/up-2" {
-		t.Fatalf("files[1][url] = %q", got)
+	if _, ok := files[0]["description"]; ok {
+		t.Fatalf("files[0].description should be omitted, got %#v", files[0]["description"])
 	}
-	if got := productForm.Get("files[1][display_name]"); got != "" {
-		t.Fatalf("files[1][display_name] = %q, want empty", got)
+	if got := files[1]["url"]; got != "https://example.com/uploads/up-2" {
+		t.Fatalf("files[1].url = %#v", got)
 	}
-	if got := productForm.Get("files[1][description]"); got != "Second file" {
-		t.Fatalf("files[1][description] = %q", got)
+	if _, ok := files[1]["display_name"]; ok {
+		t.Fatalf("files[1].display_name should be omitted, got %#v", files[1]["display_name"])
+	}
+	if got := files[1]["description"]; got != "Second file" {
+		t.Fatalf("files[1].description = %#v", got)
 	}
 	if s3Calls != 2 {
 		t.Fatalf("S3 calls = %d, want 2", s3Calls)
@@ -213,10 +243,10 @@ func TestCreate_WithFiles_DryRunPrintsUploadsAndPlaceholderRequest(t *testing.T)
 	if !strings.Contains(out, "Dry run: POST /products") {
 		t.Fatalf("missing create request: %q", out)
 	}
-	if !strings.Contains(out, "files[0][url]: <uploaded:file:0>") {
+	if !strings.Contains(out, "uploaded:file:0") {
 		t.Fatalf("missing first placeholder URL: %q", out)
 	}
-	if !strings.Contains(out, "files[1][description]: Second file") {
+	if !strings.Contains(out, "\"description\": \"Second file\"") {
 		t.Fatalf("missing second description: %q", out)
 	}
 }
@@ -254,14 +284,18 @@ func TestCreate_WithFiles_DryRunJSONIncludesUploadsAndRequest(t *testing.T) {
 	if payload.Request.Method != "POST" || payload.Request.Path != "/products" {
 		t.Fatalf("request = %+v", payload.Request)
 	}
-	if got := payload.Request.Params.Get("files[0][url]"); got != "<uploaded:file:0>" {
-		t.Fatalf("files[0][url] = %q", got)
+	files := createJSONFiles(t, payload.Request.Body)
+	if len(files) != 1 {
+		t.Fatalf("files payload len = %d, want 1", len(files))
 	}
-	if got := payload.Request.Params.Get("files[0][display_name]"); got != "Gift.zip" {
-		t.Fatalf("files[0][display_name] = %q", got)
+	if got := files[0]["url"]; got != "<uploaded:file:0>" {
+		t.Fatalf("files[0].url = %#v", got)
 	}
-	if got := payload.Request.Params.Get("files[0][description]"); got != "Bonus download" {
-		t.Fatalf("files[0][description] = %q", got)
+	if got := files[0]["display_name"]; got != "Gift.zip" {
+		t.Fatalf("files[0].display_name = %#v", got)
+	}
+	if got := files[0]["description"]; got != "Bonus download" {
+		t.Fatalf("files[0].description = %#v", got)
 	}
 }
 
