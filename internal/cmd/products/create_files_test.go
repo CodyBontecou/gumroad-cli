@@ -24,7 +24,9 @@ type createUploadServers struct {
 	productJSON      map[string]any
 	s3Calls          int
 	completeCalls    int
+	abortCalls       int
 	presignCalls     int
+	failCompleteOn   int
 }
 
 func newCreateUploadServers(t *testing.T) *createUploadServers {
@@ -84,11 +86,21 @@ func (srv *createUploadServers) dispatch(t *testing.T) http.HandlerFunc {
 			}
 			srv.mu.Lock()
 			srv.completeCalls++
+			completeCalls := srv.completeCalls
 			srv.mu.Unlock()
+			if srv.failCompleteOn == completeCalls {
+				http.Error(w, "complete failed", http.StatusBadGateway)
+				return
+			}
 
 			testutil.JSON(t, w, map[string]any{
 				"file_url": "https://example.com/uploads/" + body["upload_id"].(string),
 			})
+		case "/files/abort":
+			srv.mu.Lock()
+			srv.abortCalls++
+			srv.mu.Unlock()
+			testutil.JSON(t, w, map[string]any{})
 		case "/products":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -346,5 +358,41 @@ func TestCreate_FileMetadataCountMustMatchFiles(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestCreate_WithFiles_PartialFailureIncludesUploadedURLs(t *testing.T) {
+	srv := newCreateUploadServers(t)
+	srv.failCompleteOn = 2
+	testutil.Setup(t, srv.dispatch(t))
+
+	firstPath := writeCreateFixture(t, "first")
+	secondPath := writeCreateFixture(t, "second")
+
+	cmd := testutil.Command(newCreateCmd())
+	cmd.SetArgs([]string{
+		"--name", "Art Pack",
+		"--price", "10.00",
+		"--file", firstPath,
+		"--file", secondPath,
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected upload failure")
+	}
+	if !strings.Contains(err.Error(), "https://example.com/uploads/up-1") {
+		t.Fatalf("expected uploaded URL in error, got %v", err)
+	}
+
+	_, productJSON, s3Calls, completeCalls := srv.snapshot()
+	if len(productJSON) != 0 {
+		t.Fatalf("unexpected product create payload: %#v", productJSON)
+	}
+	if s3Calls != 2 {
+		t.Fatalf("S3 calls = %d, want 2", s3Calls)
+	}
+	if completeCalls != 2 {
+		t.Fatalf("complete calls = %d, want 2", completeCalls)
 	}
 }

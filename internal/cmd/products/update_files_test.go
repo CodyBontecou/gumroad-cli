@@ -22,11 +22,12 @@ type productUpdateFileServers struct {
 
 	s3 *httptest.Server
 
-	getCalls     atomic.Int32
-	putCalls     atomic.Int32
-	jsonPutCalls atomic.Int32
-	s3Calls      atomic.Int32
-	completeSeq  atomic.Int32
+	getCalls       atomic.Int32
+	putCalls       atomic.Int32
+	jsonPutCalls   atomic.Int32
+	s3Calls        atomic.Int32
+	completeSeq    atomic.Int32
+	failCompleteOn int32
 
 	putForm     url.Values
 	putJSON     map[string]any
@@ -52,9 +53,9 @@ func newProductUpdateFileServers(t *testing.T) *productUpdateFileServers {
 	}))
 	t.Cleanup(s.s3.Close)
 
-	prev := productUploadHTTPClientForTesting
-	productUploadHTTPClientForTesting = s.s3.Client()
-	t.Cleanup(func() { productUploadHTTPClientForTesting = prev })
+	prev := s3HTTPClientForTesting
+	s3HTTPClientForTesting = s.s3.Client()
+	t.Cleanup(func() { s3HTTPClientForTesting = prev })
 
 	return s
 }
@@ -109,6 +110,10 @@ func (s *productUpdateFileServers) dispatch(t *testing.T) http.HandlerFunc {
 			})
 		case "/files/complete":
 			seq := s.completeSeq.Add(1)
+			if s.failCompleteOn == seq {
+				http.Error(w, "complete failed", http.StatusBadGateway)
+				return
+			}
 			testutil.JSON(t, w, map[string]any{
 				"file_url": fmt.Sprintf("https://example.com/attachments/u/k/original/upload-%d.bin", seq),
 			})
@@ -376,6 +381,59 @@ func TestUpdate_KeepFileRequiresReplaceFiles(t *testing.T) {
 	}
 }
 
+func TestUpdate_InvalidUploadFailsBeforeRemovalConfirmation(t *testing.T) {
+	srv := newProductUpdateFileServers(t)
+	srv.existingFiles = []existingProductFile{{ID: "file_a"}}
+	testutil.Setup(t, srv.dispatch(t))
+
+	missingPath := filepath.Join(t.TempDir(), "missing.bin")
+	cmd := testutil.Command(newUpdateCmd(), testutil.NoInput(true))
+	cmd.SetArgs([]string{"prod1", "--replace-files", "--file", missingPath})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected local file validation error")
+	}
+	if !strings.Contains(err.Error(), "could not stat file") {
+		t.Fatalf("expected stat error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("expected validation to happen before confirmation, got %v", err)
+	}
+	if srv.putCalls.Load() != 0 {
+		t.Fatalf("unexpected PUT calls: %d", srv.putCalls.Load())
+	}
+	if srv.s3Calls.Load() != 0 {
+		t.Fatalf("unexpected S3 calls: %d", srv.s3Calls.Load())
+	}
+}
+
+func TestUpdate_FileUploadFailureIncludesUploadedURLs(t *testing.T) {
+	srv := newProductUpdateFileServers(t)
+	srv.failCompleteOn = 2
+	testutil.Setup(t, srv.dispatch(t))
+
+	firstPath := writeProductUploadFixture(t, "first")
+	secondPath := writeProductUploadFixture(t, "second")
+	cmd := testutil.Command(newUpdateCmd())
+	cmd.SetArgs([]string{
+		"prod1",
+		"--file", firstPath,
+		"--file", secondPath,
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected upload failure")
+	}
+	if !strings.Contains(err.Error(), "https://example.com/attachments/u/k/original/upload-1.bin") {
+		t.Fatalf("expected uploaded URL in error, got %v", err)
+	}
+	if srv.putCalls.Load() != 0 {
+		t.Fatalf("unexpected PUT calls: %d", srv.putCalls.Load())
+	}
+}
+
 func TestUpdate_ReplaceFilesClearAllDryRunJSON(t *testing.T) {
 	srv := newProductUpdateFileServers(t)
 	srv.existingFiles = []existingProductFile{{ID: "file_a"}}
@@ -435,7 +493,7 @@ func TestUpdate_ReplaceFilesClearAllDryRunHuman(t *testing.T) {
 	}
 }
 
-func TestBuildProductUpdateJSONBody_MapsTagsAndRepeatedValues(t *testing.T) {
+func TestBuildProductJSONBody_MapsTagsAndRepeatedValues(t *testing.T) {
 	params := url.Values{
 		"name":   {"Updated"},
 		"tags[]": {"art", "digital"},
@@ -443,7 +501,7 @@ func TestBuildProductUpdateJSONBody_MapsTagsAndRepeatedValues(t *testing.T) {
 	}
 	files := []map[string]any{{"id": "file_a"}}
 
-	body := buildProductUpdateJSONBody(params, files)
+	body := buildProductJSONBody(params, files)
 	if got := body["name"]; got != "Updated" {
 		t.Fatalf("name = %#v, want Updated", got)
 	}
@@ -461,24 +519,10 @@ func TestBuildProductUpdateJSONBody_MapsTagsAndRepeatedValues(t *testing.T) {
 	}
 }
 
-func TestProductUploadStatusAndHumanUploadBytes(t *testing.T) {
-	if got := productUploadStatus("pack.zip", 4*1024*1024, "12.0 MB"); !strings.Contains(got, "pack.zip") || !strings.Contains(got, "4.0 MB") || !strings.Contains(got, "12.0 MB") {
-		t.Fatalf("productUploadStatus = %q", got)
-	}
-
-	cases := []struct {
-		in   int64
-		want string
-	}{
-		{0, "0 B"},
-		{1024, "1.0 KB"},
-		{5 * 1024 * 1024, "5.0 MB"},
-		{2 * 1024 * 1024 * 1024, "2.0 GB"},
-	}
-	for _, c := range cases {
-		if got := humanUploadBytes(c.in); got != c.want {
-			t.Fatalf("humanUploadBytes(%d) = %q, want %q", c.in, got, c.want)
-		}
+func TestWrapPartialUploadErrorIncludesUploadedURLs(t *testing.T) {
+	err := wrapPartialUploadError(fmt.Errorf("boom"), []string{"one", "two"})
+	if !strings.Contains(err.Error(), "one") || !strings.Contains(err.Error(), "two") {
+		t.Fatalf("wrapped error = %v", err)
 	}
 }
 

@@ -3,7 +3,6 @@ package products
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -45,10 +44,6 @@ var validSubscriptionDurations = map[string]bool{
 	"monthly": true, "quarterly": true, "biannually": true,
 	"yearly": true, "every_two_years": true,
 }
-
-// s3HTTPClientForTesting redirects multipart PUTs at a test TLS server. Tests
-// in this package must not use t.Parallel while mutating this hook.
-var s3HTTPClientForTesting *http.Client
 
 type createUploadInput struct {
 	Path        string
@@ -175,12 +170,12 @@ func newCreateCmd() *cobra.Command {
 			}
 
 			if len(plannedUploads) > 0 {
-				fileURLs := make([]string, len(plannedUploads))
 				if opts.DryRun {
+					fileURLs := make([]string, len(plannedUploads))
 					for i := range plannedUploads {
 						fileURLs[i] = dryRunFilePlaceholder(i)
 					}
-					body := buildCreateProductJSONBody(params, buildCreateUploadFilesPayload(plannedUploads, fileURLs))
+					body := buildProductJSONBody(params, buildCreateUploadFilesPayload(plannedUploads, fileURLs))
 					return renderCreateDryRun(opts, plannedUploads, body)
 				}
 
@@ -189,17 +184,11 @@ func newCreateCmd() *cobra.Command {
 					return err
 				}
 				client := cmdutil.NewAPIClient(opts, token)
-				for i, planned := range plannedUploads {
-					statusLabel := planned.Plan.Filename
-					if len(plannedUploads) > 1 {
-						statusLabel = fmt.Sprintf("%s (%d/%d)", planned.Plan.Filename, i+1, len(plannedUploads))
-					}
-					fileURLs[i], err = uploadui.UploadFile(opts, client, planned.Path, planned.Plan, s3HTTPClientForTesting, statusLabel)
-					if err != nil {
-						return err
-					}
+				fileURLs, err := uploadBatch(opts, client, createBatchUploadInputs(plannedUploads))
+				if err != nil {
+					return err
 				}
-				body := buildCreateProductJSONBody(params, buildCreateUploadFilesPayload(plannedUploads, fileURLs))
+				body := buildProductJSONBody(params, buildCreateUploadFilesPayload(plannedUploads, fileURLs))
 				return cmdutil.RunWithToken(opts, token, "Creating product...",
 					func(client *api.Client) (json.RawMessage, error) {
 						return client.PostJSON("/products", body)
@@ -308,34 +297,19 @@ func buildCreateUploadFilesPayload(uploads []createUploadInput, fileURLs []strin
 	return files
 }
 
-func dryRunFilePlaceholder(i int) string {
-	return fmt.Sprintf("<uploaded:file:%d>", i)
-}
-
-func buildCreateProductJSONBody(params url.Values, files []map[string]any) map[string]any {
-	body := make(map[string]any, len(params)+1)
-	keys := make([]string, 0, len(params))
-	for key := range params {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		values := append([]string(nil), params[key]...)
-		switch key {
-		case "tags[]":
-			body["tags"] = values
-		default:
-			if len(values) == 1 {
-				body[key] = values[0]
-			} else if len(values) > 1 {
-				body[key] = values
-			}
+func createBatchUploadInputs(uploads []createUploadInput) []batchUploadInput {
+	inputs := make([]batchUploadInput, len(uploads))
+	for i, current := range uploads {
+		inputs[i] = batchUploadInput{
+			Path: current.Path,
+			Plan: current.Plan,
 		}
 	}
+	return inputs
+}
 
-	body["files"] = files
-	return body
+func dryRunFilePlaceholder(i int) string {
+	return fmt.Sprintf("<uploaded:file:%d>", i)
 }
 
 func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body map[string]any) error {

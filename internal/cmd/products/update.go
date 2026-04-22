@@ -134,6 +134,11 @@ func newUpdateCmd() *cobra.Command {
 				return err
 			}
 
+			plannedUploads, err := describeProductUploads(filePlan.Uploads)
+			if err != nil {
+				return err
+			}
+
 			ok, err := confirmProductFileRemoval(opts, args[0], filePlan.Removed)
 			if err != nil {
 				return err
@@ -142,25 +147,17 @@ func newUpdateCmd() *cobra.Command {
 				return cmdutil.PrintCancelledAction(opts, "update product "+args[0], args[0])
 			}
 
-			plannedUploads, err := describeProductUploads(filePlan.Uploads)
-			if err != nil {
-				return err
-			}
 			if opts.DryRun {
-				payload := buildProductUpdateJSONBody(params,
+				payload := buildProductJSONBody(params,
 					buildProductUpdateFilesPayload(filePlan, placeholderUploadURLs(len(plannedUploads))))
 				return renderProductUpdateDryRun(opts, path, payload)
 			}
 
-			uploadedURLs := make([]string, len(plannedUploads))
-			for i, planned := range plannedUploads {
-				fileURL, err := uploadProductFile(opts, client, planned)
-				if err != nil {
-					return err
-				}
-				uploadedURLs[i] = fileURL
+			uploadedURLs, err := uploadBatch(opts, client, productBatchUploadInputs(plannedUploads))
+			if err != nil {
+				return err
 			}
-			payload := buildProductUpdateJSONBody(params, buildProductUpdateFilesPayload(filePlan, uploadedURLs))
+			payload := buildProductJSONBody(params, buildProductUpdateFilesPayload(filePlan, uploadedURLs))
 			return runProductUpdateJSON(opts, client, path, args[0], payload)
 		},
 	}

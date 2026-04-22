@@ -16,11 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// productUploadHTTPClientForTesting redirects S3 part PUTs at a test server.
-// Production leaves this nil so upload.Upload falls back to its shared client.
-// Tests in this package must not use t.Parallel while mutating this var.
-var productUploadHTTPClientForTesting *http.Client
-
 type requestedProductUpload struct {
 	Path        string
 	DisplayName string
@@ -235,32 +230,6 @@ func placeholderUploadURLs(count int) []string {
 	return urls
 }
 
-func buildProductUpdateJSONBody(params url.Values, files []map[string]any) map[string]any {
-	body := make(map[string]any, len(params)+1)
-	keys := make([]string, 0, len(params))
-	for key := range params {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		values := append([]string(nil), params[key]...)
-		switch key {
-		case "tags[]":
-			body["tags"] = values
-		default:
-			if len(values) == 1 {
-				body[key] = values[0]
-			} else if len(values) > 1 {
-				body[key] = values
-			}
-		}
-	}
-
-	body["files"] = files
-	return body
-}
-
 func renderProductUpdateDryRun(opts cmdutil.Options, path string, body map[string]any) error {
 	switch {
 	case opts.UsesJSONOutput():
@@ -348,56 +317,17 @@ func confirmProductFileRemoval(opts cmdutil.Options, productID string, removed [
 	return cmdutil.ConfirmAction(opts, message)
 }
 
-func uploadProductFile(opts cmdutil.Options, client *api.Client, planned plannedProductUpload) (string, error) {
-	totalLabel := humanUploadBytes(planned.Plan.Size)
-	var sp *output.Spinner
-	if cmdutil.ShouldShowSpinner(opts) {
-		sp = output.NewSpinnerTo(productUploadStatus(planned.Plan.Filename, 0, totalLabel), opts.Err())
-		sp.Start()
-		defer sp.Stop()
-	}
-
-	progress := func(uploaded int64) {
-		if sp != nil {
-			sp.SetMessage(productUploadStatus(planned.Plan.Filename, uploaded, totalLabel))
-		}
-	}
-
-	fileURL, err := upload.Upload(opts.Context, client, planned.Path, upload.Options{
-		Filename:   planned.Plan.Filename,
-		Progress:   progress,
-		HTTPClient: productUploadHTTPClientForTesting,
-	})
-	if err != nil {
-		return "", err
-	}
-	if sp != nil {
-		sp.Stop()
-	}
-	return fileURL, nil
-}
-
-func productUploadStatus(filename string, uploaded int64, totalLabel string) string {
-	return fmt.Sprintf("Uploading %s %s / %s", filename, humanUploadBytes(uploaded), totalLabel)
-}
-
-// humanUploadBytes matches the file upload command's byte formatting so both
-// entry points report multipart progress consistently.
-func humanUploadBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for n/div >= unit && exp < 3 {
-		div *= unit
-		exp++
-	}
-	v := float64(n) / float64(div)
-	units := []string{"KB", "MB", "GB", "TB"}
-	return fmt.Sprintf("%.1f %s", v, units[exp])
-}
-
 func joinComma(values []string) string {
 	return strings.Join(values, ", ")
+}
+
+func productBatchUploadInputs(uploads []plannedProductUpload) []batchUploadInput {
+	inputs := make([]batchUploadInput, len(uploads))
+	for i, current := range uploads {
+		inputs[i] = batchUploadInput{
+			Path: current.Path,
+			Plan: current.Plan,
+		}
+	}
+	return inputs
 }
