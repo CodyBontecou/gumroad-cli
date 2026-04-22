@@ -243,6 +243,31 @@ func TestComplete_DryRun_EmitsRequestPlan(t *testing.T) {
 	}
 }
 
+func TestComplete_DryRunJSON_UsesRequestEnvelope(t *testing.T) {
+	testutil.Setup(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("dry-run must not reach the API")
+	})
+	recoveryPath := writeRecovery(t, map[string]any{
+		"upload_id":       "up-json-dry",
+		"key":             "k",
+		"completed_parts": []map[string]any{{"part_number": 1, "etag": "e1"}},
+	})
+	cmd := testutil.Command(newCompleteCmd(), testutil.DryRun(true), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--recovery", recoveryPath})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	var payload dryRunCompletePayload
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("expected JSON dry-run output, got %v: %s", err, out)
+	}
+	if !payload.DryRun || payload.Request.Method != http.MethodPost || payload.Request.Path != "/files/complete" {
+		t.Fatalf("unexpected dry-run payload: %+v", payload)
+	}
+	if got := payload.Request.Body["upload_id"]; got != "up-json-dry" {
+		t.Fatalf("upload_id = %#v, want up-json-dry", got)
+	}
+}
+
 func TestComplete_AmbiguousReplayFailure_PreservesManifest(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, `{"success":false,"message":"upstream timeout"}`, http.StatusBadGateway)

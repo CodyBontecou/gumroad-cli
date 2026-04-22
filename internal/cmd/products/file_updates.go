@@ -49,33 +49,37 @@ type productFilesResponse struct {
 type dryRunUpdateBody struct {
 	DryRun  bool                 `json:"dry_run"`
 	Uploads []dryRunCreateUpload `json:"uploads"`
-	Method  string               `json:"method"`
-	Path    string               `json:"path"`
-	Body    map[string]any       `json:"body"`
+	Request dryRunCreateRequest  `json:"request"`
 }
 
 func collectRequestedProductUploads(
 	cmd *cobra.Command,
 	paths, names, descriptions []string,
 ) ([]requestedProductUpload, error) {
-	if len(names) != 0 && len(names) != len(paths) {
-		return nil, cmdutil.UsageErrorf(cmd,
-			"--file-name must be provided either zero times or exactly once per --file")
+	if len(paths) == 0 {
+		if len(names) > 0 {
+			return nil, cmdutil.UsageErrorf(cmd, "--file-name requires at least one --file")
+		}
+		if len(descriptions) > 0 {
+			return nil, cmdutil.UsageErrorf(cmd, "--file-description requires at least one --file")
+		}
+		return nil, nil
 	}
-	if len(descriptions) != 0 && len(descriptions) != len(paths) {
-		return nil, cmdutil.UsageErrorf(cmd,
-			"--file-description must be provided either zero times or exactly once per --file")
+
+	alignedNames, err := alignCreateUploadValues(cmd, "--file-name", names, len(paths))
+	if err != nil {
+		return nil, err
+	}
+	alignedDescriptions, err := alignCreateUploadValues(cmd, "--file-description", descriptions, len(paths))
+	if err != nil {
+		return nil, err
 	}
 
 	uploads := make([]requestedProductUpload, len(paths))
 	for i, path := range paths {
 		uploadSpec := requestedProductUpload{Path: path}
-		if len(names) != 0 {
-			uploadSpec.DisplayName = names[i]
-		}
-		if len(descriptions) != 0 {
-			uploadSpec.Description = descriptions[i]
-		}
+		uploadSpec.DisplayName = strings.TrimSpace(alignedNames[i])
+		uploadSpec.Description = alignedDescriptions[i]
 		uploads[i] = uploadSpec
 	}
 	return uploads, nil
@@ -256,9 +260,11 @@ func renderProductUpdateDryRunJSON(
 	payload := dryRunUpdateBody{
 		DryRun:  true,
 		Uploads: make([]dryRunCreateUpload, 0, len(uploads)),
-		Method:  http.MethodPut,
-		Path:    path,
-		Body:    body,
+		Request: dryRunCreateRequest{
+			Method: http.MethodPut,
+			Path:   path,
+			Body:   body,
+		},
 	}
 	for _, planned := range uploads {
 		payload.Uploads = append(payload.Uploads, dryRunProductUpload(planned.Plan))

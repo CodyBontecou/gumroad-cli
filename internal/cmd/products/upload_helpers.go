@@ -88,6 +88,8 @@ func buildProductJSONBody(params url.Values, files []map[string]any) map[string]
 		}
 	}
 
-	body["files"] = files
+	if files != nil {
+		body["files"] = files
+	}
 	return body
 }

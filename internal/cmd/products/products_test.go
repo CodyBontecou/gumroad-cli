@@ -875,6 +875,37 @@ func TestUpdate_DryRun(t *testing.T) {
 	}
 }
 
+func TestUpdate_DryRunJSON_UsesRequestEnvelope(t *testing.T) {
+	testutil.Setup(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("should not reach API in dry-run mode")
+	})
+
+	cmd := testutil.Command(newUpdateCmd(), testutil.DryRun(true), testutil.JSONOutput())
+	cmd.SetArgs([]string{"prod1", "--name", "X", "--tag", "art"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	var payload dryRunUpdateBody
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("expected JSON dry-run output, got %v: %s", err, out)
+	}
+	if !payload.DryRun || payload.Request.Method != "PUT" || payload.Request.Path != "/products/prod1" {
+		t.Fatalf("unexpected dry-run payload: %+v", payload)
+	}
+	if len(payload.Uploads) != 0 {
+		t.Fatalf("expected no uploads, got %+v", payload.Uploads)
+	}
+	if got := payload.Request.Body["name"]; got != "X" {
+		t.Fatalf("name = %#v, want X", got)
+	}
+	tags, ok := payload.Request.Body["tags"].([]any)
+	if !ok || len(tags) != 1 || tags[0] != "art" {
+		t.Fatalf("tags = %#v", payload.Request.Body["tags"])
+	}
+	if _, ok := payload.Request.Body["files"]; ok {
+		t.Fatalf("did not expect files field in non-file dry-run body: %#v", payload.Request.Body)
+	}
+}
+
 func TestUpdate_Tags(t *testing.T) {
 	var gotForm url.Values
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {

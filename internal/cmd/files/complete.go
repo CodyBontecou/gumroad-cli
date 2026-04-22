@@ -40,10 +40,14 @@ type completeManifestPart struct {
 }
 
 type dryRunCompleteRequest struct {
-	DryRun bool           `json:"dry_run"`
 	Method string         `json:"method"`
 	Path   string         `json:"path"`
 	Body   map[string]any `json:"body"`
+}
+
+type dryRunCompletePayload struct {
+	DryRun  bool                  `json:"dry_run"`
+	Request dryRunCompleteRequest `json:"request"`
 }
 
 func newCompleteCmd() *cobra.Command {
@@ -163,11 +167,13 @@ func buildCompleteJSONBody(manifest completeManifest) map[string]any {
 func renderCompleteDryRun(opts cmdutil.Options, path string, body map[string]any) error {
 	switch {
 	case opts.UsesJSONOutput():
-		payload := dryRunCompleteRequest{
+		payload := dryRunCompletePayload{
 			DryRun: true,
-			Method: http.MethodPost,
-			Path:   path,
-			Body:   body,
+			Request: dryRunCompleteRequest{
+				Method: http.MethodPost,
+				Path:   path,
+				Body:   body,
+			},
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {

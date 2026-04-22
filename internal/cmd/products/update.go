@@ -114,6 +114,9 @@ func newUpdateCmd() *cobra.Command {
 				flags.Changed("remove-file") ||
 				flags.Changed("replace-files")
 			if !fileFlagsChanged {
+				if opts.DryRun && opts.UsesJSONOutput() {
+					return renderProductUpdateDryRun(opts, path, nil, buildProductJSONBody(params, nil))
+				}
 				return cmdutil.RunRequestWithSuccess(opts,
 					"Updating product...", "PUT", path, params,
 					args[0], "Product "+args[0]+" updated.")

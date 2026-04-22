@@ -371,7 +371,7 @@ func TestUpdate_FileDryRunPrefetchesButDoesNotUploadOrPut(t *testing.T) {
 	if payload.Uploads[0].PartCount != 1 {
 		t.Fatalf("upload part count = %d, want 1", payload.Uploads[0].PartCount)
 	}
-	files := productUpdateJSONFiles(t, payload.Body)
+	files := productUpdateJSONFiles(t, payload.Request.Body)
 	if len(files) != 2 || files[0]["id"] != "file_b" {
 		t.Fatalf("dry-run files payload = %#v", files)
 	}
@@ -389,7 +389,15 @@ func TestUpdate_FileDryRunPlainIncludesUploadPlan(t *testing.T) {
 	cmd.SetArgs([]string{"prod1", "--file", path})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
-	if !strings.Contains(out, "upload\t"+path+"\t"+filepath.Base(path)+"\t11\t1") {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("plain dry-run missing upload/request lines: %q", out)
+	}
+	fields := strings.Split(lines[0], "\t")
+	if len(fields) != 5 {
+		t.Fatalf("plain dry-run upload row = %q", lines[0])
+	}
+	if fields[0] != "upload" || filepath.Base(fields[1]) != filepath.Base(path) || fields[2] != filepath.Base(path) || fields[3] != "11" || fields[4] != "1" {
 		t.Fatalf("plain dry-run missing upload plan: %q", out)
 	}
 	if !strings.Contains(out, "PUT\t/products/prod1\t") {
@@ -433,6 +441,32 @@ func TestUpdate_KeepFileRequiresReplaceFiles(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--replace-files") {
 		t.Fatalf("expected keep-file usage error, got %v", err)
+	}
+}
+
+func TestCollectRequestedProductUploads_RequiresFileForMetadataFlags(t *testing.T) {
+	cmd := newUpdateCmd()
+
+	_, err := collectRequestedProductUploads(cmd, nil, []string{" Gift.zip "}, nil)
+	if err == nil || !strings.Contains(err.Error(), "--file-name requires at least one --file") {
+		t.Fatalf("expected --file-name usage error, got %v", err)
+	}
+
+	_, err = collectRequestedProductUploads(cmd, nil, nil, []string{"Bonus"})
+	if err == nil || !strings.Contains(err.Error(), "--file-description requires at least one --file") {
+		t.Fatalf("expected --file-description usage error, got %v", err)
+	}
+}
+
+func TestCollectRequestedProductUploads_TrimsDisplayName(t *testing.T) {
+	cmd := newUpdateCmd()
+
+	uploads, err := collectRequestedProductUploads(cmd, []string{"./pack.zip"}, []string{"  Gift.zip  "}, []string{""})
+	if err != nil {
+		t.Fatalf("collectRequestedProductUploads: %v", err)
+	}
+	if len(uploads) != 1 || uploads[0].DisplayName != "Gift.zip" {
+		t.Fatalf("uploads = %+v", uploads)
 	}
 }
 
@@ -502,15 +536,15 @@ func TestUpdate_ReplaceFilesClearAllDryRunJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("parse JSON: %v\n%s", err, out)
 	}
-	if !payload.DryRun || payload.Method != http.MethodPut || payload.Path != "/products/prod1" {
+	if payload.Request.Method != http.MethodPut || payload.Request.Path != "/products/prod1" {
 		t.Fatalf("unexpected dry-run envelope: %+v", payload)
 	}
 	if len(payload.Uploads) != 0 {
 		t.Fatalf("expected no uploads, got %+v", payload.Uploads)
 	}
-	files, ok := payload.Body["files"].([]any)
+	files, ok := payload.Request.Body["files"].([]any)
 	if !ok {
-		t.Fatalf("files payload has wrong type: %T", payload.Body["files"])
+		t.Fatalf("files payload has wrong type: %T", payload.Request.Body["files"])
 	}
 	if len(files) != 0 {
 		t.Fatalf("expected empty files array, got %#v", files)
@@ -596,7 +630,7 @@ func TestRenderProductUpdateDryRunJSON_Direct(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &payload); err != nil {
 		t.Fatalf("parse output: %v\n%s", err, buf.String())
 	}
-	if payload.Path != "/products/prod1" || payload.Method != http.MethodPut || !payload.DryRun {
+	if payload.Request.Path != "/products/prod1" || payload.Request.Method != http.MethodPut || !payload.DryRun {
 		t.Fatalf("unexpected JSON dry-run output: %+v", payload)
 	}
 	if len(payload.Uploads) != 0 {
