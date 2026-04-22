@@ -209,22 +209,22 @@ func describeProductUploads(uploads []requestedProductUpload) ([]plannedProductU
 	return planned, nil
 }
 
-func appendProductFilesParams(params url.Values, plan productFileUpdatePlan, uploadURLs []string) {
-	index := 0
+func buildProductUpdateFilesPayload(plan productFileUpdatePlan, uploadURLs []string) []map[string]any {
+	files := make([]map[string]any, 0, len(plan.Preserved)+len(plan.Uploads))
 	for _, file := range plan.Preserved {
-		params.Set(fmt.Sprintf("files[%d][id]", index), file.ID)
-		index++
+		files = append(files, map[string]any{"id": file.ID})
 	}
 	for i, requested := range plan.Uploads {
-		params.Set(fmt.Sprintf("files[%d][url]", index), uploadURLs[i])
+		entry := map[string]any{"url": uploadURLs[i]}
 		if requested.DisplayName != "" {
-			params.Set(fmt.Sprintf("files[%d][display_name]", index), requested.DisplayName)
+			entry["display_name"] = requested.DisplayName
 		}
 		if requested.Description != "" {
-			params.Set(fmt.Sprintf("files[%d][description]", index), requested.Description)
+			entry["description"] = requested.Description
 		}
-		index++
+		files = append(files, entry)
 	}
+	return files
 }
 
 func placeholderUploadURLs(count int) []string {
@@ -233,10 +233,6 @@ func placeholderUploadURLs(count int) []string {
 		urls[i] = fmt.Sprintf("<uploaded:file:%d>", i)
 	}
 	return urls
-}
-
-func fileUpdateNeedsJSONBody(plan productFileUpdatePlan) bool {
-	return len(plan.Preserved) == 0 && len(plan.Uploads) == 0
 }
 
 func buildProductUpdateJSONBody(params url.Values, files []map[string]any) map[string]any {
@@ -263,6 +259,17 @@ func buildProductUpdateJSONBody(params url.Values, files []map[string]any) map[s
 
 	body["files"] = files
 	return body
+}
+
+func renderProductUpdateDryRun(opts cmdutil.Options, path string, body map[string]any) error {
+	switch {
+	case opts.UsesJSONOutput():
+		return renderProductUpdateDryRunJSON(opts, path, body)
+	case opts.PlainOutput:
+		return renderProductUpdateDryRunPlain(opts, path, body)
+	default:
+		return renderProductUpdateDryRunHuman(opts, path, body)
+	}
 }
 
 func renderProductUpdateDryRunJSON(opts cmdutil.Options, path string, body map[string]any) error {
@@ -302,18 +309,6 @@ func renderProductUpdateDryRunHuman(opts cmdutil.Options, path string, body map[
 		return fmt.Errorf("could not encode dry-run output: %w", err)
 	}
 	return output.Writeln(opts.Out(), string(data))
-}
-
-func renderClearAllFilesDryRun(opts cmdutil.Options, path string, params url.Values) error {
-	body := buildProductUpdateJSONBody(params, []map[string]any{})
-	switch {
-	case opts.UsesJSONOutput():
-		return renderProductUpdateDryRunJSON(opts, path, body)
-	case opts.PlainOutput:
-		return renderProductUpdateDryRunPlain(opts, path, body)
-	default:
-		return renderProductUpdateDryRunHuman(opts, path, body)
-	}
 }
 
 func runProductUpdateJSON(

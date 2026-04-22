@@ -85,7 +85,7 @@ func (s *productUpdateFileServers) dispatch(t *testing.T) http.HandlerFunc {
 					if err := r.ParseForm(); err != nil {
 						t.Fatalf("ParseForm failed: %v", err)
 					}
-					s.putForm = cmdValuesClone(r.PostForm)
+					s.putForm = r.PostForm
 				}
 				testutil.JSON(t, w, map[string]any{})
 			default:
@@ -131,12 +131,22 @@ func writeProductUploadFixture(t *testing.T, contents string) string {
 	return path
 }
 
-func cmdValuesClone(values url.Values) url.Values {
-	cloned := make(url.Values, len(values))
-	for key, current := range values {
-		cloned[key] = append([]string(nil), current...)
+func productUpdateJSONFiles(t *testing.T, body map[string]any) []map[string]any {
+	t.Helper()
+
+	raw, ok := body["files"].([]any)
+	if !ok {
+		t.Fatalf("files payload has wrong type: %T", body["files"])
 	}
-	return cloned
+	files := make([]map[string]any, len(raw))
+	for i, current := range raw {
+		file, ok := current.(map[string]any)
+		if !ok {
+			t.Fatalf("files[%d] has wrong type: %T", i, current)
+		}
+		files[i] = file
+	}
+	return files
 }
 
 func TestUpdate_FilePreservesExistingByDefault(t *testing.T) {
@@ -163,8 +173,8 @@ func TestUpdate_FilePreservesExistingByDefault(t *testing.T) {
 	if srv.putCalls.Load() != 1 {
 		t.Fatalf("PUT calls = %d, want 1", srv.putCalls.Load())
 	}
-	if srv.jsonPutCalls.Load() != 0 {
-		t.Fatalf("expected form PUT, got %d JSON PUTs", srv.jsonPutCalls.Load())
+	if srv.jsonPutCalls.Load() != 1 {
+		t.Fatalf("expected JSON PUT, got %d JSON PUTs", srv.jsonPutCalls.Load())
 	}
 	if srv.s3Calls.Load() != 1 {
 		t.Fatalf("S3 calls = %d, want 1", srv.s3Calls.Load())
@@ -173,20 +183,24 @@ func TestUpdate_FilePreservesExistingByDefault(t *testing.T) {
 		t.Fatalf("presign filename = %q, want New Pack.zip", srv.presignBody["filename"])
 	}
 
-	if got := srv.putForm.Get("files[0][id]"); got != "file_a" {
-		t.Fatalf("files[0][id] = %q, want file_a", got)
+	files := productUpdateJSONFiles(t, srv.putJSON)
+	if len(files) != 3 {
+		t.Fatalf("files payload len = %d, want 3", len(files))
 	}
-	if got := srv.putForm.Get("files[1][id]"); got != "file_b" {
-		t.Fatalf("files[1][id] = %q, want file_b", got)
+	if files[0]["id"] != "file_a" {
+		t.Fatalf("files[0].id = %#v, want file_a", files[0]["id"])
 	}
-	if got := srv.putForm.Get("files[2][url]"); got != "https://example.com/attachments/u/k/original/upload-1.bin" {
-		t.Fatalf("files[2][url] = %q", got)
+	if files[1]["id"] != "file_b" {
+		t.Fatalf("files[1].id = %#v, want file_b", files[1]["id"])
 	}
-	if got := srv.putForm.Get("files[2][display_name]"); got != "New Pack.zip" {
-		t.Fatalf("files[2][display_name] = %q", got)
+	if files[2]["url"] != "https://example.com/attachments/u/k/original/upload-1.bin" {
+		t.Fatalf("files[2].url = %#v", files[2]["url"])
 	}
-	if got := srv.putForm.Get("files[2][description]"); got != "Updated bundle" {
-		t.Fatalf("files[2][description] = %q", got)
+	if files[2]["display_name"] != "New Pack.zip" {
+		t.Fatalf("files[2].display_name = %#v", files[2]["display_name"])
+	}
+	if files[2]["description"] != "Updated bundle" {
+		t.Fatalf("files[2].description = %#v", files[2]["description"])
 	}
 }
 
@@ -202,11 +216,9 @@ func TestUpdate_RemoveFilePreservesOthers(t *testing.T) {
 	cmd.SetArgs([]string{"prod1", "--remove-file", "file_a"})
 	testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
-	if got := srv.putForm.Get("files[0][id]"); got != "file_b" {
-		t.Fatalf("files[0][id] = %q, want file_b", got)
-	}
-	if got := srv.putForm.Get("files[1][id]"); got != "" {
-		t.Fatalf("unexpected second preserved file: %q", got)
+	files := productUpdateJSONFiles(t, srv.putJSON)
+	if len(files) != 1 || files[0]["id"] != "file_b" {
+		t.Fatalf("files payload = %#v, want only file_b", files)
 	}
 }
 
@@ -223,11 +235,9 @@ func TestUpdate_ReplaceFilesKeepsOnlyRequestedIDs(t *testing.T) {
 	cmd.SetArgs([]string{"prod1", "--replace-files", "--keep-file", "file_b"})
 	testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
-	if got := srv.putForm.Get("files[0][id]"); got != "file_b" {
-		t.Fatalf("files[0][id] = %q, want file_b", got)
-	}
-	if got := srv.putForm.Get("files[1][id]"); got != "" {
-		t.Fatalf("unexpected extra preserved file: %q", got)
+	files := productUpdateJSONFiles(t, srv.putJSON)
+	if len(files) != 1 || files[0]["id"] != "file_b" {
+		t.Fatalf("files payload = %#v, want only file_b", files)
 	}
 }
 
@@ -324,7 +334,7 @@ func TestUpdate_FileDryRunPrefetchesButDoesNotUploadOrPut(t *testing.T) {
 	testutil.Setup(t, srv.dispatch(t))
 
 	path := writeProductUploadFixture(t, "fresh bytes")
-	cmd := testutil.Command(newUpdateCmd(), testutil.DryRun(true))
+	cmd := testutil.Command(newUpdateCmd(), testutil.DryRun(true), testutil.JSONOutput())
 	cmd.SetArgs([]string{"prod1", "--file", path, "--remove-file", "file_a"})
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 
@@ -337,11 +347,16 @@ func TestUpdate_FileDryRunPrefetchesButDoesNotUploadOrPut(t *testing.T) {
 	if srv.putCalls.Load() != 0 {
 		t.Fatalf("unexpected PUT calls: %d", srv.putCalls.Load())
 	}
-	if !strings.Contains(out, "files[0][id]: file_b") {
-		t.Fatalf("dry-run output missing preserved id: %q", out)
+	var payload dryRunUpdateBody
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("parse JSON: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "<uploaded:file:0>") {
-		t.Fatalf("dry-run output missing placeholder upload URL: %q", out)
+	files := productUpdateJSONFiles(t, payload.Body)
+	if len(files) != 2 || files[0]["id"] != "file_b" {
+		t.Fatalf("dry-run files payload = %#v", files)
+	}
+	if files[1]["url"] != "<uploaded:file:0>" {
+		t.Fatalf("dry-run upload placeholder = %#v", files[1]["url"])
 	}
 }
 

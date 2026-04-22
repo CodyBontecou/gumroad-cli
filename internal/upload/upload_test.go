@@ -3,6 +3,7 @@ package upload
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -93,12 +94,13 @@ type railsMock struct {
 	abortCalls    atomic.Int32
 
 	completeBody url.Values
+	completeJSON map[string]any
 	completeMu   sync.Mutex
 }
 
 // dispatch routes the request by path and records the call. It also captures
-// the parsed form body from /files/complete because several tests assert on
-// the indexed parts[n][...] encoding.
+// the request body from /files/complete because several tests assert on the
+// multipart-finalize payload shape.
 func (m *railsMock) dispatch(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	t.Helper()
 	switch r.URL.Path {
@@ -112,11 +114,21 @@ func (m *railsMock) dispatch(t *testing.T, w http.ResponseWriter, r *http.Reques
 		m.presign(w, r)
 	case "/files/complete":
 		m.completeCalls.Add(1)
-		if err := r.ParseForm(); err != nil {
-			t.Errorf("parse complete form: %v", err)
-		}
 		m.completeMu.Lock()
-		m.completeBody = r.PostForm
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode complete json: %v", err)
+			}
+			m.completeJSON = body
+			m.completeBody = nil
+		} else {
+			if err := r.ParseForm(); err != nil {
+				t.Errorf("parse complete form: %v", err)
+			}
+			m.completeBody = r.PostForm
+			m.completeJSON = nil
+		}
 		m.completeMu.Unlock()
 		if m.complete == nil {
 			t.Errorf("unexpected /files/complete call")
@@ -141,6 +153,12 @@ func (m *railsMock) completeForm() url.Values {
 	m.completeMu.Lock()
 	defer m.completeMu.Unlock()
 	return m.completeBody
+}
+
+func (m *railsMock) completeJSONBody() map[string]any {
+	m.completeMu.Lock()
+	defer m.completeMu.Unlock()
+	return m.completeJSON
 }
 
 // setupServers wires a Rails mock (via testutil.Setup so the env + token are
@@ -356,17 +374,24 @@ func TestUpload_HappyPath_MultiPart(t *testing.T) {
 		}
 	}
 
-	// Verify complete form has indexed parts[n][part_number]/[etag].
-	form := mock.completeForm()
-	if form.Get("upload_id") != "up-1" {
-		t.Errorf("upload_id = %q", form.Get("upload_id"))
+	body := mock.completeJSONBody()
+	if body["upload_id"] != "up-1" {
+		t.Errorf("upload_id = %v", body["upload_id"])
+	}
+	parts, ok := body["parts"].([]any)
+	if !ok || len(parts) != 3 {
+		t.Fatalf("parts = %#v, want 3-element array", body["parts"])
 	}
 	for i := 0; i < 3; i++ {
-		if got := form.Get(fmt.Sprintf("parts[%d][part_number]", i)); got != strconv.Itoa(i+1) {
-			t.Errorf("parts[%d][part_number] = %q", i, got)
+		part, ok := parts[i].(map[string]any)
+		if !ok {
+			t.Fatalf("parts[%d] = %#v, want object", i, parts[i])
 		}
-		if got := form.Get(fmt.Sprintf("parts[%d][etag]", i)); got != fmt.Sprintf("etag-%d", i+1) {
-			t.Errorf("parts[%d][etag] = %q", i, got)
+		if got := int(part["part_number"].(float64)); got != i+1 {
+			t.Errorf("parts[%d].part_number = %d, want %d", i, got, i+1)
+		}
+		if got := part["etag"]; got != fmt.Sprintf("etag-%d", i+1) {
+			t.Errorf("parts[%d].etag = %v", i, got)
 		}
 	}
 }
@@ -400,9 +425,17 @@ func TestUpload_HappyPath_SinglePart(t *testing.T) {
 		t.Errorf("fileURL = %q", fileURL)
 	}
 
-	form := mock.completeForm()
-	if form.Get("parts[0][etag]") != "single-etag" {
-		t.Errorf("parts[0][etag] = %q (ETag quotes not stripped?)", form.Get("parts[0][etag]"))
+	body := mock.completeJSONBody()
+	parts, ok := body["parts"].([]any)
+	if !ok || len(parts) != 1 {
+		t.Fatalf("parts = %#v, want 1-element array", body["parts"])
+	}
+	part, ok := parts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("parts[0] = %#v, want object", parts[0])
+	}
+	if part["etag"] != "single-etag" {
+		t.Errorf("parts[0].etag = %v (ETag quotes not stripped?)", part["etag"])
 	}
 }
 

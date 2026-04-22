@@ -28,20 +28,16 @@ func writeRecovery(t *testing.T, data any) string {
 	return path
 }
 
-func TestComplete_HappyPath_IndexedPartsAndReturnsFileURL(t *testing.T) {
-	var received map[string]string
+func TestComplete_HappyPath_JSONBodyAndReturnsFileURL(t *testing.T) {
+	var received map[string]any
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/files/complete" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 			http.Error(w, "bad", http.StatusNotFound)
 			return
 		}
-		if err := r.ParseForm(); err != nil {
-			t.Fatalf("parse form: %v", err)
-		}
-		received = map[string]string{}
-		for k, v := range r.PostForm {
-			received[k] = strings.Join(v, ",")
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode JSON: %v", err)
 		}
 		testutil.JSON(t, w, map[string]any{"file_url": "https://example.com/final"})
 	})
@@ -66,12 +62,20 @@ func TestComplete_HappyPath_IndexedPartsAndReturnsFileURL(t *testing.T) {
 	if received["key"] != "attachments/u/k/original/p.bin" {
 		t.Errorf("key = %q", received["key"])
 	}
+	parts, ok := received["parts"].([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("parts = %#v, want 2-element array", received["parts"])
+	}
 	for i := 0; i < 2; i++ {
-		if got := received[fmt.Sprintf("parts[%d][part_number]", i)]; got == "" {
-			t.Errorf("missing parts[%d][part_number]", i)
+		part, ok := parts[i].(map[string]any)
+		if !ok {
+			t.Fatalf("parts[%d] = %#v, want object", i, parts[i])
 		}
-		if got := received[fmt.Sprintf("parts[%d][etag]", i)]; got == "" {
-			t.Errorf("missing parts[%d][etag]", i)
+		if got := int(part["part_number"].(float64)); got != i+1 {
+			t.Errorf("parts[%d].part_number = %d, want %d", i, got, i+1)
+		}
+		if got := part["etag"]; got != fmt.Sprintf("etag-%d", i+1) {
+			t.Errorf("parts[%d].etag = %v", i, got)
 		}
 	}
 	if got := strings.TrimSpace(out); got != "https://example.com/final" {

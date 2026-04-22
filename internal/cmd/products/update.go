@@ -142,22 +142,14 @@ func newUpdateCmd() *cobra.Command {
 				return cmdutil.PrintCancelledAction(opts, "update product "+args[0], args[0])
 			}
 
-			if fileUpdateNeedsJSONBody(filePlan) {
-				if opts.DryRun {
-					return renderClearAllFilesDryRun(opts, path, params)
-				}
-				payload := buildProductUpdateJSONBody(params, []map[string]any{})
-				return runProductUpdateJSON(opts, client, path, args[0], payload)
-			}
-
 			plannedUploads, err := describeProductUploads(filePlan.Uploads)
 			if err != nil {
 				return err
 			}
 			if opts.DryRun {
-				dryRunParams := cmdutil.CloneValues(params)
-				appendProductFilesParams(dryRunParams, filePlan, placeholderUploadURLs(len(plannedUploads)))
-				return cmdutil.PrintDryRunRequest(opts, "PUT", path, dryRunParams)
+				payload := buildProductUpdateJSONBody(params,
+					buildProductUpdateFilesPayload(filePlan, placeholderUploadURLs(len(plannedUploads))))
+				return renderProductUpdateDryRun(opts, path, payload)
 			}
 
 			uploadedURLs := make([]string, len(plannedUploads))
@@ -168,10 +160,8 @@ func newUpdateCmd() *cobra.Command {
 				}
 				uploadedURLs[i] = fileURL
 			}
-			appendProductFilesParams(params, filePlan, uploadedURLs)
-			return cmdutil.RunRequestWithSuccess(opts,
-				"Updating product...", "PUT", path, params,
-				args[0], "Product "+args[0]+" updated.")
+			payload := buildProductUpdateJSONBody(params, buildProductUpdateFilesPayload(filePlan, uploadedURLs))
+			return runProductUpdateJSON(opts, client, path, args[0], payload)
 		},
 	}
 

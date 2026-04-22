@@ -78,12 +78,20 @@ func (c *Client) Post(path string, params url.Values) (json.RawMessage, error) {
 	return c.do("POST", path, params)
 }
 
+func (c *Client) PostJSON(path string, payload any) (json.RawMessage, error) {
+	return c.doJSONWithContext(c.requestContext(), "POST", path, payload)
+}
+
 // PostWithContext runs a POST under ctx instead of the client's baked-in
 // context. Use this when a single call needs its own independent lifetime —
 // e.g. best-effort cleanup that must still run after the original request
 // context has been canceled.
 func (c *Client) PostWithContext(ctx context.Context, path string, params url.Values) (json.RawMessage, error) {
 	return c.doWithContext(ctx, "POST", path, params)
+}
+
+func (c *Client) PostJSONWithContext(ctx context.Context, path string, payload any) (json.RawMessage, error) {
+	return c.doJSONWithContext(ctx, "POST", path, payload)
 }
 
 func (c *Client) Put(path string, params url.Values) (json.RawMessage, error) {
