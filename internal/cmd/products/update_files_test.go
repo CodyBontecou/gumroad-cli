@@ -356,12 +356,67 @@ func TestUpdate_FileDryRunPrefetchesButDoesNotUploadOrPut(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("parse JSON: %v\n%s", err, out)
 	}
+	if len(payload.Uploads) != 1 {
+		t.Fatalf("uploads = %d, want 1", len(payload.Uploads))
+	}
+	if payload.Uploads[0].Path != path {
+		t.Fatalf("upload path = %q, want %q", payload.Uploads[0].Path, path)
+	}
+	if payload.Uploads[0].Filename != filepath.Base(path) {
+		t.Fatalf("upload filename = %q, want %q", payload.Uploads[0].Filename, filepath.Base(path))
+	}
+	if payload.Uploads[0].Size != int64(len("fresh bytes")) {
+		t.Fatalf("upload size = %d, want %d", payload.Uploads[0].Size, len("fresh bytes"))
+	}
+	if payload.Uploads[0].PartCount != 1 {
+		t.Fatalf("upload part count = %d, want 1", payload.Uploads[0].PartCount)
+	}
 	files := productUpdateJSONFiles(t, payload.Body)
 	if len(files) != 2 || files[0]["id"] != "file_b" {
 		t.Fatalf("dry-run files payload = %#v", files)
 	}
 	if files[1]["url"] != "<uploaded:file:0>" {
 		t.Fatalf("dry-run upload placeholder = %#v", files[1]["url"])
+	}
+}
+
+func TestUpdate_FileDryRunPlainIncludesUploadPlan(t *testing.T) {
+	srv := newProductUpdateFileServers(t)
+	testutil.Setup(t, srv.dispatch(t))
+
+	path := writeProductUploadFixture(t, "fresh bytes")
+	cmd := testutil.Command(newUpdateCmd(), testutil.DryRun(true), testutil.PlainOutput())
+	cmd.SetArgs([]string{"prod1", "--file", path})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	if !strings.Contains(out, "upload\t"+path+"\t"+filepath.Base(path)+"\t11\t1") {
+		t.Fatalf("plain dry-run missing upload plan: %q", out)
+	}
+	if !strings.Contains(out, "PUT\t/products/prod1\t") {
+		t.Fatalf("plain dry-run missing request line: %q", out)
+	}
+}
+
+func TestUpdate_FileDryRunHumanIncludesUploadPlan(t *testing.T) {
+	srv := newProductUpdateFileServers(t)
+	testutil.Setup(t, srv.dispatch(t))
+
+	path := writeProductUploadFixture(t, "fresh bytes")
+	cmd := testutil.Command(newUpdateCmd(), testutil.DryRun(true))
+	cmd.SetArgs([]string{"prod1", "--file", path})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	if !strings.Contains(out, "Dry run: upload "+path) {
+		t.Fatalf("human dry-run missing upload line: %q", out)
+	}
+	if !strings.Contains(out, "Filename: "+filepath.Base(path)) {
+		t.Fatalf("human dry-run missing filename: %q", out)
+	}
+	if !strings.Contains(out, "Size: 11 B (1 part)") {
+		t.Fatalf("human dry-run missing size/part count: %q", out)
+	}
+	if !strings.Contains(out, "Dry run: PUT /products/prod1") {
+		t.Fatalf("human dry-run missing request line: %q", out)
 	}
 }
 
@@ -450,6 +505,9 @@ func TestUpdate_ReplaceFilesClearAllDryRunJSON(t *testing.T) {
 	if !payload.DryRun || payload.Method != http.MethodPut || payload.Path != "/products/prod1" {
 		t.Fatalf("unexpected dry-run envelope: %+v", payload)
 	}
+	if len(payload.Uploads) != 0 {
+		t.Fatalf("expected no uploads, got %+v", payload.Uploads)
+	}
 	files, ok := payload.Body["files"].([]any)
 	if !ok {
 		t.Fatalf("files payload has wrong type: %T", payload.Body["files"])
@@ -531,7 +589,7 @@ func TestRenderProductUpdateDryRunJSON_Direct(t *testing.T) {
 	opts := testutil.TestOptions(testutil.Stdout(&buf), testutil.JSONOutput())
 	body := map[string]any{"files": []map[string]any{}}
 
-	if err := renderProductUpdateDryRunJSON(opts, "/products/prod1", body); err != nil {
+	if err := renderProductUpdateDryRunJSON(opts, "/products/prod1", nil, body); err != nil {
 		t.Fatalf("renderProductUpdateDryRunJSON: %v", err)
 	}
 	var payload dryRunUpdateBody
@@ -540,5 +598,8 @@ func TestRenderProductUpdateDryRunJSON_Direct(t *testing.T) {
 	}
 	if payload.Path != "/products/prod1" || payload.Method != http.MethodPut || !payload.DryRun {
 		t.Fatalf("unexpected JSON dry-run output: %+v", payload)
+	}
+	if len(payload.Uploads) != 0 {
+		t.Fatalf("expected no uploads, got %+v", payload.Uploads)
 	}
 }

@@ -150,7 +150,7 @@ func newUpdateCmd() *cobra.Command {
 			if opts.DryRun {
 				payload := buildProductJSONBody(params,
 					buildProductUpdateFilesPayload(filePlan, placeholderUploadURLs(len(plannedUploads))))
-				return renderProductUpdateDryRun(opts, path, payload)
+				return renderProductUpdateDryRun(opts, path, plannedUploads, payload)
 			}
 
 			uploadedURLs, err := uploadBatch(opts, client, productBatchUploadInputs(plannedUploads))

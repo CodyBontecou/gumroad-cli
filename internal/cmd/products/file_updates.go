@@ -47,10 +47,11 @@ type productFilesResponse struct {
 }
 
 type dryRunUpdateBody struct {
-	DryRun bool           `json:"dry_run"`
-	Method string         `json:"method"`
-	Path   string         `json:"path"`
-	Body   map[string]any `json:"body"`
+	DryRun  bool                 `json:"dry_run"`
+	Uploads []dryRunCreateUpload `json:"uploads"`
+	Method  string               `json:"method"`
+	Path    string               `json:"path"`
+	Body    map[string]any       `json:"body"`
 }
 
 func collectRequestedProductUploads(
@@ -230,23 +231,37 @@ func placeholderUploadURLs(count int) []string {
 	return urls
 }
 
-func renderProductUpdateDryRun(opts cmdutil.Options, path string, body map[string]any) error {
+func renderProductUpdateDryRun(
+	opts cmdutil.Options,
+	path string,
+	uploads []plannedProductUpload,
+	body map[string]any,
+) error {
 	switch {
 	case opts.UsesJSONOutput():
-		return renderProductUpdateDryRunJSON(opts, path, body)
+		return renderProductUpdateDryRunJSON(opts, path, uploads, body)
 	case opts.PlainOutput:
-		return renderProductUpdateDryRunPlain(opts, path, body)
+		return renderProductUpdateDryRunPlain(opts, path, uploads, body)
 	default:
-		return renderProductUpdateDryRunHuman(opts, path, body)
+		return renderProductUpdateDryRunHuman(opts, path, uploads, body)
 	}
 }
 
-func renderProductUpdateDryRunJSON(opts cmdutil.Options, path string, body map[string]any) error {
+func renderProductUpdateDryRunJSON(
+	opts cmdutil.Options,
+	path string,
+	uploads []plannedProductUpload,
+	body map[string]any,
+) error {
 	payload := dryRunUpdateBody{
-		DryRun: true,
-		Method: http.MethodPut,
-		Path:   path,
-		Body:   body,
+		DryRun:  true,
+		Uploads: make([]dryRunCreateUpload, 0, len(uploads)),
+		Method:  http.MethodPut,
+		Path:    path,
+		Body:    body,
+	}
+	for _, planned := range uploads {
+		payload.Uploads = append(payload.Uploads, dryRunProductUpload(planned.Plan))
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -255,7 +270,17 @@ func renderProductUpdateDryRunJSON(opts cmdutil.Options, path string, body map[s
 	return output.PrintJSON(opts.Out(), data, opts.JQExpr)
 }
 
-func renderProductUpdateDryRunPlain(opts cmdutil.Options, path string, body map[string]any) error {
+func renderProductUpdateDryRunPlain(
+	opts cmdutil.Options,
+	path string,
+	uploads []plannedProductUpload,
+	body map[string]any,
+) error {
+	for _, planned := range uploads {
+		if err := renderProductUploadDryRunPlain(opts, planned.Plan); err != nil {
+			return err
+		}
+	}
 	data, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("could not encode dry-run output: %w", err)
@@ -267,7 +292,17 @@ func renderProductUpdateDryRunPlain(opts cmdutil.Options, path string, body map[
 	}})
 }
 
-func renderProductUpdateDryRunHuman(opts cmdutil.Options, path string, body map[string]any) error {
+func renderProductUpdateDryRunHuman(
+	opts cmdutil.Options,
+	path string,
+	uploads []plannedProductUpload,
+	body map[string]any,
+) error {
+	for _, planned := range uploads {
+		if err := renderProductUploadDryRun(opts, planned.Plan); err != nil {
+			return err
+		}
+	}
 	style := opts.Style()
 	if err := output.Writeln(opts.Out(), style.Yellow("Dry run")+": "+http.MethodPut+" "+path); err != nil {
 		return err

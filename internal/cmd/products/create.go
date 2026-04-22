@@ -312,6 +312,27 @@ func dryRunFilePlaceholder(i int) string {
 	return fmt.Sprintf("<uploaded:file:%d>", i)
 }
 
+func dryRunProductUpload(plan upload.Plan) dryRunCreateUpload {
+	return dryRunCreateUpload{
+		Action:    "upload",
+		Path:      plan.Path,
+		Filename:  plan.Filename,
+		Size:      plan.Size,
+		PartSize:  plan.PartSize,
+		PartCount: plan.PartCount,
+	}
+}
+
+func renderProductUploadDryRunPlain(opts cmdutil.Options, plan upload.Plan) error {
+	return output.PrintPlain(opts.Out(), [][]string{{
+		"upload",
+		plan.Path,
+		plan.Filename,
+		strconv.FormatInt(plan.Size, 10),
+		strconv.Itoa(plan.PartCount),
+	}})
+}
+
 func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body map[string]any) error {
 	if opts.UsesJSONOutput() {
 		payload := dryRunCreatePayload{
@@ -324,14 +345,7 @@ func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body 
 			},
 		}
 		for _, planned := range uploads {
-			payload.Uploads = append(payload.Uploads, dryRunCreateUpload{
-				Action:    "upload",
-				Path:      planned.Plan.Path,
-				Filename:  planned.Plan.Filename,
-				Size:      planned.Plan.Size,
-				PartSize:  planned.Plan.PartSize,
-				PartCount: planned.Plan.PartCount,
-			})
+			payload.Uploads = append(payload.Uploads, dryRunProductUpload(planned.Plan))
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {
@@ -342,13 +356,7 @@ func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body 
 
 	if opts.PlainOutput {
 		for _, planned := range uploads {
-			if err := output.PrintPlain(opts.Out(), [][]string{{
-				"upload",
-				planned.Plan.Path,
-				planned.Plan.Filename,
-				strconv.FormatInt(planned.Plan.Size, 10),
-				strconv.Itoa(planned.Plan.PartCount),
-			}}); err != nil {
+			if err := renderProductUploadDryRunPlain(opts, planned.Plan); err != nil {
 				return err
 			}
 		}
@@ -360,7 +368,7 @@ func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body 
 	}
 
 	for _, planned := range uploads {
-		if err := renderCreateUploadDryRun(opts, planned.Plan); err != nil {
+		if err := renderProductUploadDryRun(opts, planned.Plan); err != nil {
 			return err
 		}
 	}
@@ -375,7 +383,7 @@ func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body 
 	return output.Writeln(opts.Out(), string(data))
 }
 
-func renderCreateUploadDryRun(opts cmdutil.Options, plan upload.Plan) error {
+func renderProductUploadDryRun(opts cmdutil.Options, plan upload.Plan) error {
 	style := opts.Style()
 	if err := output.Writeln(opts.Out(), style.Yellow("Dry run")+": upload "+plan.Path); err != nil {
 		return err
