@@ -2,15 +2,18 @@
 name: gumroad
 description: >
   Use the `gumroad` CLI to look up and manage Gumroad data from the terminal.
-  Trigger when the user asks about Gumroad products, sales, subscribers,
-  licenses, payouts, offer codes, webhooks, or any Gumroad data lookup.
+  Trigger when the user asks about Gumroad products, files, file uploads,
+  attachments, sales, subscribers, licenses, payouts, offer codes, webhooks,
+  or any Gumroad data lookup.
   Also trigger on "check my Gumroad", "look up a sale", "verify a license",
   "list my products", "how much have I made", "who bought", "recent sales",
-  "refund a sale", "create a product", "manage webhooks", "check my earnings",
-  "see my revenue", "who subscribed", "manage my store", "discount code",
-  "coupon", "shipping status", "payout schedule", or any request to query
-  or act on Gumroad data — even if the user doesn't say "Gumroad" explicitly
-  but is clearly referring to their creator store or digital product sales.
+  "refund a sale", "create a product", "upload a file", "attach a file to a product",
+  "finish a failed upload", "abort an upload", "manage webhooks",
+  "check my earnings", "see my revenue", "who subscribed", "manage my store",
+  "discount code", "coupon", "shipping status", "payout schedule", or any
+  request to query or act on Gumroad data — even if the user doesn't say
+  "Gumroad" explicitly but is clearly referring to their creator store or
+  digital product sales.
   Do NOT trigger for Gumroad web UI, Rails, or codebase questions.
 ---
 
@@ -25,7 +28,7 @@ Always follow these rules:
 - **Always** pass `--no-input` to prevent interactive prompts from blocking.
 - **Always** pass `--json` for programmatic access.
 - Use `--json --jq <expr>` together to extract exactly what you need.
-- For destructive operations (delete, refund), add `--yes` to skip confirmation.
+- For operations that can prompt for confirmation (delete, refund, `files abort`, `files complete` replay, or product updates that remove files), add `--yes` to skip confirmation.
 - Pass `--quiet` to suppress spinners and status messages.
 - Pass `--dry-run` to preview mutating requests without executing them.
 - Use `--page-delay 200ms` with `--all` to avoid rate limits on large datasets.
@@ -48,6 +51,7 @@ Responses are wrapped in `{"success": true, ...}` with resource-specific keys:
 - `offer-codes list` → `.offer_codes[]`
 - `variant-categories list` → `.variant_categories[]`
 - `variants list` → `.variants[]`
+- `files upload` / `files complete` → `.file_url`
 - `webhooks list` → `.resource_subscriptions[]`
 
 ## Commands
@@ -83,12 +87,16 @@ gumroad products view <id> --json --no-input
 
 # Create a product (created as draft)
 gumroad products create --name "Art Pack" --price 10.00 --json --no-input
+gumroad products create --name "Art Pack" --price 10.00 --file ./pack.zip --file-name "Art Pack.zip" --json --no-input
 gumroad products create --name "Newsletter" --type membership --subscription-duration monthly --json --no-input
 gumroad products create --name "E-Book" --type ebook --price 5 --tag art --tag digital --json --no-input
 
 # Update a product
 gumroad products update <id> --name "New Name" --json --no-input
 gumroad products update <id> --price 15.00 --currency eur --json --no-input
+gumroad products update <id> --file ./pack.zip --json --no-input
+gumroad products update <id> --replace-files --keep-file file_123 --file ./new-pack.zip --yes --json --no-input
+gumroad products update <id> --remove-file file_456 --yes --json --no-input
 
 # Publish / unpublish
 gumroad products publish <id> --json --no-input
@@ -101,7 +109,26 @@ gumroad products delete <id> --yes --json --no-input
 gumroad products skus <id> --json --no-input
 ```
 
-**Create flags:** `--name` (required), `--price`, `--type` (digital|course|ebook|membership|bundle|coffee|call|commission), `--currency`, `--pay-what-you-want`, `--suggested-price`, `--description`, `--custom-summary`, `--custom-permalink`, `--custom-receipt`, `--max-purchase-count`, `--taxonomy-id`, `--tag` (repeatable).
+**Create flags:** `--name` (required), `--price`, `--type` (digital|course|ebook|membership|bundle|coffee|call|commission), `--currency`, `--pay-what-you-want`, `--suggested-price`, `--description`, `--custom-summary`, `--custom-permalink`, `--custom-receipt`, `--max-purchase-count`, `--taxonomy-id`, `--tag` (repeatable), `--file` (repeatable), `--file-name` (repeatable, aligned to `--file`), `--file-description` (repeatable, aligned to `--file`).
+
+**Update flags:** `--file` (repeatable), `--file-name`, `--file-description`, `--remove-file` (repeatable), `--replace-files`, `--keep-file` (repeatable with `--replace-files`). Updates preserve existing files by default unless `--replace-files` is set.
+
+### files — Upload and recover file attachments
+
+```sh
+# Upload a file and print the canonical Gumroad URL
+gumroad files upload ./pack.zip --json --no-input
+gumroad files upload ./pack.zip --name "Art Pack.zip" --json --no-input
+
+# Finalize a saved recovery manifest after a state-unknown upload
+gumroad files complete --recovery recovery.json --yes --json --no-input
+jq '.error.recovery' err.json | gumroad files complete --recovery - --yes --json --no-input
+
+# Abort an orphaned multipart upload
+gumroad files abort --upload-id up-123 --key attachments/u/k/original/pack.zip --yes --json --no-input
+```
+
+`files upload` and `files complete` both return `.file_url`. When a JSON upload fails with recovery details, reuse `.error.recovery` with `files complete` to finish it or `files abort` to reclaim the orphaned multipart upload.
 
 ### sales — Manage sales
 
