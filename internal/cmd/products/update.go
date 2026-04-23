@@ -127,6 +127,11 @@ func newUpdateCmd() *cobra.Command {
 				return err
 			}
 
+			plannedUploads, err := describeProductUploads(requestedUploads)
+			if err != nil {
+				return err
+			}
+
 			token, err := config.Token()
 			if err != nil {
 				return err
@@ -138,11 +143,6 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			filePlan, err := planProductFileUpdate(c, existingFiles, requestedUploads, selections, replaceFiles)
-			if err != nil {
-				return err
-			}
-
-			plannedUploads, err := describeProductUploads(filePlan.Uploads)
 			if err != nil {
 				return err
 			}

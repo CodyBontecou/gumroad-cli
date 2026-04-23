@@ -526,6 +526,9 @@ func TestUpdate_InvalidUploadFailsBeforeRemovalConfirmation(t *testing.T) {
 	if strings.Contains(err.Error(), "--yes") {
 		t.Fatalf("expected validation to happen before confirmation, got %v", err)
 	}
+	if srv.getCalls.Load() != 0 {
+		t.Fatalf("unexpected GET calls: %d", srv.getCalls.Load())
+	}
 	if srv.putCalls.Load() != 0 {
 		t.Fatalf("unexpected PUT calls: %d", srv.putCalls.Load())
 	}
