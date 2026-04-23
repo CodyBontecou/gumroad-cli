@@ -386,6 +386,7 @@ func runProductUpdateJSON(
 	client *api.Client,
 	path, productID string,
 	body map[string]any,
+	uploadedURLs []string,
 ) error {
 	var sp *output.Spinner
 	if cmdutil.ShouldShowSpinner(opts) {
@@ -396,7 +397,7 @@ func runProductUpdateJSON(
 
 	data, err := client.PutJSON(path, body)
 	if err != nil {
-		return err
+		return wrapPartialUploadError(err, uploadedURLs)
 	}
 	if sp != nil {
 		sp.Stop()

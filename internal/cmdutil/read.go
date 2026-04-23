@@ -56,7 +56,7 @@ func Run(opts Options, spinnerMessage string, run ClientRunner, render func(json
 		return err
 	}
 	if opts.UsesJSONOutput() {
-		return output.PrintJSON(opts.Out(), normalizeJSONBody(data), opts.JQExpr)
+		return PrintJSONResponse(opts, data)
 	}
 	return render(data)
 }
@@ -70,7 +70,7 @@ func RunDecoded[T any](opts Options, spinnerMessage string, run ClientRunner, re
 		return err
 	}
 	if opts.UsesJSONOutput() {
-		return output.PrintJSON(opts.Out(), normalizeJSONBody(data), opts.JQExpr)
+		return PrintJSONResponse(opts, data)
 	}
 
 	decoded, err := DecodeJSON[T](data)
@@ -116,14 +116,20 @@ func RunRequestWithSuccess(opts Options, spinnerMessage, method, path string, pa
 // RunWithToken executes a caller-provided client operation with a
 // caller-supplied token.
 func RunWithToken(opts Options, token, spinnerMessage string, run ClientRunner, render func(json.RawMessage) error) error {
-	data, err := runWithTokenData(opts, token, spinnerMessage, run)
+	data, err := RunWithTokenData(opts, token, spinnerMessage, run)
 	if err != nil {
 		return err
 	}
 	if opts.UsesJSONOutput() {
-		return output.PrintJSON(opts.Out(), normalizeJSONBody(data), opts.JQExpr)
+		return PrintJSONResponse(opts, data)
 	}
 	return render(data)
+}
+
+// RunWithTokenData executes a caller-provided client operation with a
+// caller-supplied token and returns the raw response body without rendering it.
+func RunWithTokenData(opts Options, token, spinnerMessage string, run ClientRunner) (json.RawMessage, error) {
+	return runWithTokenData(opts, token, spinnerMessage, run)
 }
 
 func runAuthenticatedData(opts Options, spinnerMessage string, run ClientRunner) (json.RawMessage, error) {
@@ -154,6 +160,12 @@ func normalizeJSONBody(data json.RawMessage) json.RawMessage {
 		return json.RawMessage("null")
 	}
 	return data
+}
+
+// PrintJSONResponse renders a raw API response using the command's JSON/JQ
+// settings while preserving the shared empty-body normalization.
+func PrintJSONResponse(opts Options, data json.RawMessage) error {
+	return output.PrintJSON(opts.Out(), normalizeJSONBody(data), opts.JQExpr)
 }
 
 type mutationOutput struct {

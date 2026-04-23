@@ -166,10 +166,7 @@ func newUpdateCmd() *cobra.Command {
 				return err
 			}
 			payload := buildProductJSONBody(params, buildProductUpdateFilesPayload(filePlan, uploadedURLs))
-			if err := runProductUpdateJSON(opts, client, path, args[0], payload); err != nil {
-				return wrapPartialUploadError(err, uploadedURLs)
-			}
-			return nil
+			return runProductUpdateJSON(opts, client, path, args[0], payload, uploadedURLs)
 		},
 	}
 

@@ -435,3 +435,38 @@ func TestCreate_WithFiles_ProductCreateFailureIncludesUploadedURLs(t *testing.T)
 		t.Fatalf("complete calls = %d, want 1", completeCalls)
 	}
 }
+
+func TestCreate_WithFiles_RenderFailureDoesNotIncludeUploadedURLs(t *testing.T) {
+	srv := newCreateUploadServers(t)
+	testutil.Setup(t, srv.dispatch(t))
+
+	path := writeCreateFixture(t, "first")
+	cmd := testutil.Command(newCreateCmd(), testutil.JSONOutput(), testutil.JQ(".bad[syntax"))
+	cmd.SetArgs([]string{
+		"--name", "Art Pack",
+		"--price", "10.00",
+		"--file", path,
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected render failure")
+	}
+	if !strings.Contains(err.Error(), "invalid jq expression") {
+		t.Fatalf("expected jq error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "https://example.com/uploads/up-1") {
+		t.Fatalf("unexpected uploaded URL in render error: %v", err)
+	}
+
+	_, productJSON, s3Calls, completeCalls := srv.snapshot()
+	if len(productJSON) == 0 {
+		t.Fatal("expected product create payload to be attempted")
+	}
+	if s3Calls != 1 {
+		t.Fatalf("S3 calls = %d, want 1", s3Calls)
+	}
+	if completeCalls != 1 {
+		t.Fatalf("complete calls = %d, want 1", completeCalls)
+	}
+}

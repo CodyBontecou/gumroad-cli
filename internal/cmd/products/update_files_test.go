@@ -584,6 +584,32 @@ func TestUpdate_ProductUpdateFailureIncludesUploadedURLs(t *testing.T) {
 	}
 }
 
+func TestUpdate_RenderFailureDoesNotIncludeUploadedURLs(t *testing.T) {
+	srv := newProductUpdateFileServers(t)
+	testutil.Setup(t, srv.dispatch(t))
+
+	path := writeProductUploadFixture(t, "first")
+	cmd := testutil.Command(newUpdateCmd(), testutil.Yes(true), testutil.JSONOutput(), testutil.JQ(".bad[syntax"))
+	cmd.SetArgs([]string{
+		"prod1",
+		"--file", path,
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected render failure")
+	}
+	if !strings.Contains(err.Error(), "invalid jq expression") {
+		t.Fatalf("expected jq error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "https://example.com/attachments/u/k/original/upload-1.bin") {
+		t.Fatalf("unexpected uploaded URL in render error: %v", err)
+	}
+	if srv.putCalls.Load() != 1 {
+		t.Fatalf("PUT calls = %d, want 1", srv.putCalls.Load())
+	}
+}
+
 func TestUpdate_ReplaceFilesClearAllDryRunJSON(t *testing.T) {
 	srv := newProductUpdateFileServers(t)
 	srv.existingFiles = []existingProductFile{{ID: "file_a"}}
