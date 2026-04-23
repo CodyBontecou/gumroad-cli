@@ -28,20 +28,16 @@ func writeRecovery(t *testing.T, data any) string {
 	return path
 }
 
-func TestComplete_HappyPath_IndexedPartsAndReturnsFileURL(t *testing.T) {
-	var received map[string]string
+func TestComplete_HappyPath_JSONBodyAndReturnsFileURL(t *testing.T) {
+	var received map[string]any
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/files/complete" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 			http.Error(w, "bad", http.StatusNotFound)
 			return
 		}
-		if err := r.ParseForm(); err != nil {
-			t.Fatalf("parse form: %v", err)
-		}
-		received = map[string]string{}
-		for k, v := range r.PostForm {
-			received[k] = strings.Join(v, ",")
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode JSON: %v", err)
 		}
 		testutil.JSON(t, w, map[string]any{"file_url": "https://example.com/final"})
 	})
@@ -66,12 +62,20 @@ func TestComplete_HappyPath_IndexedPartsAndReturnsFileURL(t *testing.T) {
 	if received["key"] != "attachments/u/k/original/p.bin" {
 		t.Errorf("key = %q", received["key"])
 	}
+	parts, ok := received["parts"].([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("parts = %#v, want 2-element array", received["parts"])
+	}
 	for i := 0; i < 2; i++ {
-		if got := received[fmt.Sprintf("parts[%d][part_number]", i)]; got == "" {
-			t.Errorf("missing parts[%d][part_number]", i)
+		part, ok := parts[i].(map[string]any)
+		if !ok {
+			t.Fatalf("parts[%d] = %#v, want object", i, parts[i])
 		}
-		if got := received[fmt.Sprintf("parts[%d][etag]", i)]; got == "" {
-			t.Errorf("missing parts[%d][etag]", i)
+		if got := int(part["part_number"].(float64)); got != i+1 {
+			t.Errorf("parts[%d].part_number = %d, want %d", i, got, i+1)
+		}
+		if got := part["etag"]; got != fmt.Sprintf("etag-%d", i+1) {
+			t.Errorf("parts[%d].etag = %v", i, got)
 		}
 	}
 	if got := strings.TrimSpace(out); got != "https://example.com/final" {
@@ -236,6 +240,31 @@ func TestComplete_DryRun_EmitsRequestPlan(t *testing.T) {
 	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
 	if !strings.Contains(out, "POST") || !strings.Contains(out, "/files/complete") {
 		t.Errorf("expected dry-run output, got %q", out)
+	}
+}
+
+func TestComplete_DryRunJSON_UsesRequestEnvelope(t *testing.T) {
+	testutil.Setup(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("dry-run must not reach the API")
+	})
+	recoveryPath := writeRecovery(t, map[string]any{
+		"upload_id":       "up-json-dry",
+		"key":             "k",
+		"completed_parts": []map[string]any{{"part_number": 1, "etag": "e1"}},
+	})
+	cmd := testutil.Command(newCompleteCmd(), testutil.DryRun(true), testutil.JSONOutput())
+	cmd.SetArgs([]string{"--recovery", recoveryPath})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	var payload dryRunCompletePayload
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("expected JSON dry-run output, got %v: %s", err, out)
+	}
+	if !payload.DryRun || payload.Request.Method != http.MethodPost || payload.Request.Path != "/files/complete" {
+		t.Fatalf("unexpected dry-run payload: %+v", payload)
+	}
+	if got := payload.Request.Body["upload_id"]; got != "up-json-dry" {
+		t.Fatalf("upload_id = %#v, want up-json-dry", got)
 	}
 }
 

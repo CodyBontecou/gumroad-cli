@@ -3,12 +3,12 @@ package products
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/antiwork/gumroad-cli/internal/api"
 	"github.com/antiwork/gumroad-cli/internal/cmdutil"
 	"github.com/antiwork/gumroad-cli/internal/config"
 	"github.com/antiwork/gumroad-cli/internal/output"
@@ -45,10 +45,6 @@ var validSubscriptionDurations = map[string]bool{
 	"yearly": true, "every_two_years": true,
 }
 
-// s3HTTPClientForTesting redirects multipart PUTs at a test TLS server. Tests
-// in this package must not use t.Parallel while mutating this hook.
-var s3HTTPClientForTesting *http.Client
-
 type createUploadInput struct {
 	Path        string
 	DisplayName string
@@ -66,9 +62,9 @@ type dryRunCreateUpload struct {
 }
 
 type dryRunCreateRequest struct {
-	Method string     `json:"method"`
-	Path   string     `json:"path"`
-	Params url.Values `json:"params,omitempty"`
+	Method string         `json:"method"`
+	Path   string         `json:"path"`
+	Body   map[string]any `json:"body,omitempty"`
 }
 
 type dryRunCreatePayload struct {
@@ -174,13 +170,13 @@ func newCreateCmd() *cobra.Command {
 			}
 
 			if len(plannedUploads) > 0 {
-				fileURLs := make([]string, len(plannedUploads))
 				if opts.DryRun {
+					fileURLs := make([]string, len(plannedUploads))
 					for i := range plannedUploads {
 						fileURLs[i] = dryRunFilePlaceholder(i)
 					}
-					appendCreateUploadParams(params, plannedUploads, fileURLs)
-					return renderCreateDryRun(opts, plannedUploads, params)
+					body := buildProductJSONBody(params, buildCreateUploadFilesPayload(plannedUploads, fileURLs))
+					return renderCreateDryRun(opts, plannedUploads, body)
 				}
 
 				token, err := config.Token()
@@ -188,38 +184,32 @@ func newCreateCmd() *cobra.Command {
 					return err
 				}
 				client := cmdutil.NewAPIClient(opts, token)
-				for i, planned := range plannedUploads {
-					statusLabel := planned.Plan.Filename
-					if len(plannedUploads) > 1 {
-						statusLabel = fmt.Sprintf("%s (%d/%d)", planned.Plan.Filename, i+1, len(plannedUploads))
-					}
-					fileURLs[i], err = uploadui.UploadFile(opts, client, planned.Path, planned.Plan, s3HTTPClientForTesting, statusLabel)
-					if err != nil {
-						return err
-					}
+				fileURLs, err := uploadBatch(opts, client, createBatchUploadInputs(plannedUploads))
+				if err != nil {
+					return err
 				}
-				appendCreateUploadParams(params, plannedUploads, fileURLs)
+				body := buildProductJSONBody(params, buildCreateUploadFilesPayload(plannedUploads, fileURLs))
+				data, err := cmdutil.RunWithTokenData(opts, token, "Creating product...",
+					func(client *api.Client) (json.RawMessage, error) {
+						return client.PostJSON("/products", body)
+					})
+				if err != nil {
+					return wrapPartialUploadError(err, fileURLs)
+				}
+				if opts.UsesJSONOutput() {
+					return cmdutil.PrintJSONResponse(opts, data)
+				}
+				resp, err := cmdutil.DecodeJSON[createProductResponse](data)
+				if err != nil {
+					return err
+				}
+				return renderCreateProductResult(opts, resp)
 			}
 
 			return cmdutil.RunRequestDecoded[createProductResponse](opts,
 				"Creating product...", "POST", "/products", params,
 				func(resp createProductResponse) error {
-					p := resp.Product
-					if opts.PlainOutput {
-						return output.PrintPlain(opts.Out(), [][]string{
-							{p.ID, p.Name, p.FormattedPrice},
-						})
-					}
-					if opts.Quiet {
-						return nil
-					}
-					s := opts.Style()
-					if err := output.Writef(opts.Out(), "%s %s (%s)\n",
-						s.Bold("Created draft product:"), p.Name, s.Dim(p.ID)); err != nil {
-						return err
-					}
-					return output.Writef(opts.Out(), "\n%s gumroad products publish %s\n",
-						s.Dim("Publish with:"), p.ID)
+					return renderCreateProductResult(opts, resp)
 				})
 		},
 	}
@@ -295,23 +285,58 @@ func alignCreateUploadValues(c *cobra.Command, flagName string, values []string,
 	}
 }
 
-func appendCreateUploadParams(params url.Values, uploads []createUploadInput, fileURLs []string) {
+func buildCreateUploadFilesPayload(uploads []createUploadInput, fileURLs []string) []map[string]any {
+	files := make([]map[string]any, 0, len(uploads))
 	for i, planned := range uploads {
-		params.Set(fmt.Sprintf("files[%d][url]", i), fileURLs[i])
+		entry := map[string]any{"url": fileURLs[i]}
 		if planned.DisplayName != "" {
-			params.Set(fmt.Sprintf("files[%d][display_name]", i), planned.DisplayName)
+			entry["display_name"] = planned.DisplayName
 		}
 		if planned.Description != "" {
-			params.Set(fmt.Sprintf("files[%d][description]", i), planned.Description)
+			entry["description"] = planned.Description
+		}
+		files = append(files, entry)
+	}
+	return files
+}
+
+func createBatchUploadInputs(uploads []createUploadInput) []batchUploadInput {
+	inputs := make([]batchUploadInput, len(uploads))
+	for i, current := range uploads {
+		inputs[i] = batchUploadInput{
+			Path: current.Path,
+			Plan: current.Plan,
 		}
 	}
+	return inputs
 }
 
 func dryRunFilePlaceholder(i int) string {
 	return fmt.Sprintf("<uploaded:file:%d>", i)
 }
 
-func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, params url.Values) error {
+func dryRunProductUpload(plan upload.Plan) dryRunCreateUpload {
+	return dryRunCreateUpload{
+		Action:    "upload",
+		Path:      plan.Path,
+		Filename:  plan.Filename,
+		Size:      plan.Size,
+		PartSize:  plan.PartSize,
+		PartCount: plan.PartCount,
+	}
+}
+
+func renderProductUploadDryRunPlain(opts cmdutil.Options, plan upload.Plan) error {
+	return output.PrintPlain(opts.Out(), [][]string{{
+		"upload",
+		plan.Path,
+		plan.Filename,
+		strconv.FormatInt(plan.Size, 10),
+		strconv.Itoa(plan.PartCount),
+	}})
+}
+
+func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, body map[string]any) error {
 	if opts.UsesJSONOutput() {
 		payload := dryRunCreatePayload{
 			DryRun:  true,
@@ -319,18 +344,11 @@ func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, param
 			Request: dryRunCreateRequest{
 				Method: "POST",
 				Path:   "/products",
-				Params: cmdutil.CloneValues(params),
+				Body:   body,
 			},
 		}
 		for _, planned := range uploads {
-			payload.Uploads = append(payload.Uploads, dryRunCreateUpload{
-				Action:    "upload",
-				Path:      planned.Plan.Path,
-				Filename:  planned.Plan.Filename,
-				Size:      planned.Plan.Size,
-				PartSize:  planned.Plan.PartSize,
-				PartCount: planned.Plan.PartCount,
-			})
+			payload.Uploads = append(payload.Uploads, dryRunProductUpload(planned.Plan))
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {
@@ -341,28 +359,34 @@ func renderCreateDryRun(opts cmdutil.Options, uploads []createUploadInput, param
 
 	if opts.PlainOutput {
 		for _, planned := range uploads {
-			if err := output.PrintPlain(opts.Out(), [][]string{{
-				"upload",
-				planned.Plan.Path,
-				planned.Plan.Filename,
-				strconv.FormatInt(planned.Plan.Size, 10),
-				strconv.Itoa(planned.Plan.PartCount),
-			}}); err != nil {
+			if err := renderProductUploadDryRunPlain(opts, planned.Plan); err != nil {
 				return err
 			}
 		}
-		return cmdutil.PrintDryRunRequest(opts, "POST", "/products", params)
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("could not encode dry-run output: %w", err)
+		}
+		return output.PrintPlain(opts.Out(), [][]string{{"POST", "/products", string(data)}})
 	}
 
 	for _, planned := range uploads {
-		if err := renderCreateUploadDryRun(opts, planned.Plan); err != nil {
+		if err := renderProductUploadDryRun(opts, planned.Plan); err != nil {
 			return err
 		}
 	}
-	return cmdutil.PrintDryRunRequest(opts, "POST", "/products", params)
+	style := opts.Style()
+	if err := output.Writeln(opts.Out(), style.Yellow("Dry run")+": POST /products"); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return fmt.Errorf("could not encode dry-run output: %w", err)
+	}
+	return output.Writeln(opts.Out(), string(data))
 }
 
-func renderCreateUploadDryRun(opts cmdutil.Options, plan upload.Plan) error {
+func renderProductUploadDryRun(opts cmdutil.Options, plan upload.Plan) error {
 	style := opts.Style()
 	if err := output.Writeln(opts.Out(), style.Yellow("Dry run")+": upload "+plan.Path); err != nil {
 		return err
@@ -375,4 +399,23 @@ func renderCreateUploadDryRun(opts cmdutil.Options, plan upload.Plan) error {
 		parts = fmt.Sprintf("%d parts", plan.PartCount)
 	}
 	return output.Writef(opts.Out(), "Size: %s (%s)\n", uploadui.HumanBytes(plan.Size), parts)
+}
+
+func renderCreateProductResult(opts cmdutil.Options, resp createProductResponse) error {
+	p := resp.Product
+	if opts.PlainOutput {
+		return output.PrintPlain(opts.Out(), [][]string{
+			{p.ID, p.Name, p.FormattedPrice},
+		})
+	}
+	if opts.Quiet {
+		return nil
+	}
+	s := opts.Style()
+	if err := output.Writef(opts.Out(), "%s %s (%s)\n",
+		s.Bold("Created draft product:"), p.Name, s.Dim(p.ID)); err != nil {
+		return err
+	}
+	return output.Writef(opts.Out(), "\n%s gumroad products publish %s\n",
+		s.Dim("Publish with:"), p.ID)
 }

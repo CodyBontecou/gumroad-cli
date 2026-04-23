@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
 
 	"github.com/antiwork/gumroad-cli/internal/api"
 	"github.com/antiwork/gumroad-cli/internal/cmdutil"
@@ -39,6 +37,17 @@ type completeManifest struct {
 type completeManifestPart struct {
 	PartNumber int    `json:"part_number"`
 	ETag       string `json:"etag"`
+}
+
+type dryRunCompleteRequest struct {
+	Method string         `json:"method"`
+	Path   string         `json:"path"`
+	Body   map[string]any `json:"body"`
+}
+
+type dryRunCompletePayload struct {
+	DryRun  bool                  `json:"dry_run"`
+	Request dryRunCompleteRequest `json:"request"`
 }
 
 func newCompleteCmd() *cobra.Command {
@@ -128,23 +137,66 @@ func newCompleteCmd() *cobra.Command {
 				return cmdutil.PrintCancelledAction(opts, "finalize multipart upload "+manifest.UploadID, manifest.UploadID)
 			}
 
-			params := url.Values{}
-			params.Set("upload_id", manifest.UploadID)
-			params.Set("key", manifest.Key)
-			for i, p := range manifest.CompletedParts {
-				params.Set(fmt.Sprintf("parts[%d][part_number]", i), strconv.Itoa(p.PartNumber))
-				params.Set(fmt.Sprintf("parts[%d][etag]", i), p.ETag)
-			}
-
+			body := buildCompleteJSONBody(manifest)
 			if opts.DryRun {
-				return cmdutil.PrintDryRunRequest(opts, "POST", "/files/complete", params)
+				return renderCompleteDryRun(opts, "/files/complete", body)
 			}
 
-			return runComplete(opts, manifest, params)
+			return runComplete(opts, manifest, body)
 		},
 	}
 	c.Flags().StringVar(&recoveryPath, "recovery", "", "Path to the recovery manifest JSON (use `-` for stdin) (required)")
 	return c
+}
+
+func buildCompleteJSONBody(manifest completeManifest) map[string]any {
+	parts := make([]map[string]any, len(manifest.CompletedParts))
+	for i, p := range manifest.CompletedParts {
+		parts[i] = map[string]any{
+			"part_number": p.PartNumber,
+			"etag":        p.ETag,
+		}
+	}
+	return map[string]any{
+		"upload_id": manifest.UploadID,
+		"key":       manifest.Key,
+		"parts":     parts,
+	}
+}
+
+func renderCompleteDryRun(opts cmdutil.Options, path string, body map[string]any) error {
+	switch {
+	case opts.UsesJSONOutput():
+		payload := dryRunCompletePayload{
+			DryRun: true,
+			Request: dryRunCompleteRequest{
+				Method: http.MethodPost,
+				Path:   path,
+				Body:   body,
+			},
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("could not encode dry-run output: %w", err)
+		}
+		return output.PrintJSON(opts.Out(), data, opts.JQExpr)
+	case opts.PlainOutput:
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("could not encode dry-run output: %w", err)
+		}
+		return output.PrintPlain(opts.Out(), [][]string{{http.MethodPost, path, string(data)}})
+	default:
+		style := opts.Style()
+		if err := output.Writeln(opts.Out(), style.Yellow("Dry run")+": "+http.MethodPost+" "+path); err != nil {
+			return err
+		}
+		data, err := json.MarshalIndent(body, "", "  ")
+		if err != nil {
+			return fmt.Errorf("could not encode dry-run output: %w", err)
+		}
+		return output.Writeln(opts.Out(), string(data))
+	}
 }
 
 // runComplete calls /files/complete and prints the returned file_url in the
@@ -153,7 +205,7 @@ func newCompleteCmd() *cobra.Command {
 // with *upload.UnknownStateError so the caller keeps the recovery manifest
 // on a retry path — otherwise a single 5xx during replay would strand the
 // upload with no further safe reconciliation option.
-func runComplete(opts cmdutil.Options, manifest completeManifest, params url.Values) error {
+func runComplete(opts cmdutil.Options, manifest completeManifest, body map[string]any) error {
 	token, err := config.Token()
 	if err != nil {
 		return err
@@ -167,7 +219,7 @@ func runComplete(opts cmdutil.Options, manifest completeManifest, params url.Val
 		defer sp.Stop()
 	}
 
-	data, err := client.PostWithContext(opts.Context, "/files/complete", params)
+	data, err := client.PostJSONWithContext(opts.Context, "/files/complete", body)
 	if err != nil {
 		return handleCompleteFailure(err, manifest)
 	}

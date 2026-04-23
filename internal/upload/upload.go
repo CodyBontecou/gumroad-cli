@@ -381,15 +381,24 @@ func presign(ctx context.Context, client *api.Client, filename string, size int6
 }
 
 func completeUpload(ctx context.Context, client *api.Client, uploadID, key string, parts []presignPart, etags []string) (string, error) {
-	params := url.Values{}
-	params.Set("upload_id", uploadID)
-	params.Set("key", key)
+	body := map[string]any{
+		"upload_id": uploadID,
+		"key":       key,
+		"parts":     make([]map[string]any, len(parts)),
+	}
+	payloadParts := body["parts"].([]map[string]any)
 	for i, p := range parts {
-		params.Set(fmt.Sprintf("parts[%d][part_number]", i), strconv.Itoa(p.PartNumber))
-		params.Set(fmt.Sprintf("parts[%d][etag]", i), etags[i])
+		payloadParts[i] = map[string]any{
+			"part_number": p.PartNumber,
+			"etag":        etags[i],
+		}
 	}
 
-	data, err := client.PostWithContext(ctx, "/files/complete", params)
+	// Rails expects params[:parts] to be an actual array of hashes.
+	// Indexed form keys like parts[0][part_number] decode to a hash keyed
+	// by "0", which Array(params[:parts]) turns into [["0", {...}]] and
+	// ultimately produces part_number=0 on the backend.
+	data, err := client.PostJSONWithContext(ctx, "/files/complete", body)
 	if err != nil {
 		return "", err
 	}

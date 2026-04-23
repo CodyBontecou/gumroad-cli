@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -78,6 +78,10 @@ func (c *Client) Post(path string, params url.Values) (json.RawMessage, error) {
 	return c.do("POST", path, params)
 }
 
+func (c *Client) PostJSON(path string, payload any) (json.RawMessage, error) {
+	return c.doJSONWithContext(c.requestContext(), "POST", path, payload)
+}
+
 // PostWithContext runs a POST under ctx instead of the client's baked-in
 // context. Use this when a single call needs its own independent lifetime —
 // e.g. best-effort cleanup that must still run after the original request
@@ -86,8 +90,16 @@ func (c *Client) PostWithContext(ctx context.Context, path string, params url.Va
 	return c.doWithContext(ctx, "POST", path, params)
 }
 
+func (c *Client) PostJSONWithContext(ctx context.Context, path string, payload any) (json.RawMessage, error) {
+	return c.doJSONWithContext(ctx, "POST", path, payload)
+}
+
 func (c *Client) Put(path string, params url.Values) (json.RawMessage, error) {
 	return c.do("PUT", path, params)
+}
+
+func (c *Client) PutJSON(path string, payload any) (json.RawMessage, error) {
+	return c.doJSONWithContext(c.requestContext(), "PUT", path, payload)
 }
 
 func (c *Client) Delete(path string, params url.Values) (json.RawMessage, error) {
@@ -126,7 +138,35 @@ func (c *Client) doWithContext(ctx context.Context, method, path string, params 
 			logURL += "?" + redactQueryValues(params).Encode()
 		}
 	}
+	var bodyBytes []byte
+	contentType := ""
+	if method != "GET" && encodedParams != "" {
+		bodyBytes = []byte(encodedParams)
+		contentType = "application/x-www-form-urlencoded"
+	}
+	return c.doPreparedWithContext(ctx, method, requestURL, logURL, bodyBytes, contentType)
+}
 
+func (c *Client) doJSONWithContext(ctx context.Context, method, path string, payload any) (json.RawMessage, error) {
+	baseURL := c.baseURL
+	if baseURL == "" {
+		baseURL = defaultBaseURL()
+	}
+
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("could not encode request body: %w", err)
+	}
+	requestURL := baseURL + path
+	return c.doPreparedWithContext(ctx, method, requestURL, requestURL, bodyBytes, "application/json")
+}
+
+func (c *Client) doPreparedWithContext(
+	ctx context.Context,
+	method, requestURL, logURL string,
+	bodyBytes []byte,
+	contentType string,
+) (json.RawMessage, error) {
 	logResponse := func(statusCode int, size int, apiErr error, started time.Time) {
 		duration := time.Since(started).Round(time.Millisecond)
 		if apiErr != nil {
@@ -140,8 +180,8 @@ func (c *Client) doWithContext(ctx context.Context, method, path string, params 
 		start := time.Now()
 
 		var body io.Reader
-		if method != "GET" && encodedParams != "" {
-			body = strings.NewReader(encodedParams)
+		if len(bodyBytes) > 0 {
+			body = bytes.NewReader(bodyBytes)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
@@ -152,8 +192,8 @@ func (c *Client) doWithContext(ctx context.Context, method, path string, params 
 
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("User-Agent", "gumroad/"+c.version)
-		if body != nil {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
 		}
 		c.debugf("request method=%s url=%s attempt=%d", method, logURL, attempt+1)
 
