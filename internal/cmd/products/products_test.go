@@ -349,6 +349,27 @@ func TestView_SalesCountFloat(t *testing.T) {
 	}
 }
 
+func TestView_MembershipUsesMembersLabel(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{
+			"product": map[string]any{
+				"id": "m1", "name": "Club", "published": true,
+				"formatted_price": "$5 a month", "sales_count": 7, "sales_usd_cents": 3500,
+				"is_tiered_membership": true,
+			},
+		})
+	})
+
+	cmd := newViewCmd()
+	out := testutil.CaptureStdout(func() { _ = cmd.RunE(cmd, []string{"m1"}) })
+	if !strings.Contains(out, "Members: 7") {
+		t.Errorf("expected membership to use Members label, got: %q", out)
+	}
+	if strings.Contains(out, "Sales: 7") {
+		t.Errorf("expected membership to not use Sales label, got: %q", out)
+	}
+}
+
 func TestList_SalesCountFloat(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.RawJSON(t, w, `{
