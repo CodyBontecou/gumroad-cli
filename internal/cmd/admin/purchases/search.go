@@ -83,9 +83,9 @@ func renderSearch(opts cmdutil.Options, email string, resp searchResponse) error
 		return output.Writef(opts.Out(), "No purchases found for %s.\n", email)
 	}
 
-	headline := fmt.Sprintf("%d purchase(s) for %s", resp.Count, email)
+	headline := fmt.Sprintf("%d purchase(s) for %s", len(resp.Purchases), email)
 	if resp.HasMore {
-		headline += " (truncated)"
+		headline = fmt.Sprintf("Showing %d of %d purchase(s) for %s (truncated)", len(resp.Purchases), resp.Count, email)
 	}
 	if err := output.Writeln(opts.Out(), style.Bold(headline)); err != nil {
 		return err

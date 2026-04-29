@@ -88,8 +88,12 @@ Until then the existing email remains active.`,
 }
 
 func renderUpdateEmail(opts cmdutil.Options, currentEmail, newEmail string, resp updateEmailResponse) error {
-	message := fallback(resp.Message, "Email change pending confirmation: "+currentEmail+" → "+fallback(resp.UnconfirmedEmail, newEmail))
 	unconfirmed := fallback(resp.UnconfirmedEmail, newEmail)
+	defaultMessage := "Email change applied: " + currentEmail + " → " + unconfirmed
+	if resp.PendingConfirmation {
+		defaultMessage = "Email change pending confirmation: " + currentEmail + " → " + unconfirmed
+	}
+	message := fallback(resp.Message, defaultMessage)
 	pending := "false"
 	if resp.PendingConfirmation {
 		pending = "true"

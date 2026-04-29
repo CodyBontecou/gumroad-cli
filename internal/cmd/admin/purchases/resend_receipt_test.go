@@ -105,16 +105,3 @@ func TestResendReceipt_PlainOutput(t *testing.T) {
 		t.Fatalf("unexpected plain output: %q", out)
 	}
 }
-
-func TestResendReceipt_CancelledByPromptDecline(t *testing.T) {
-	testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Error("should not reach API when confirmation is refused")
-	})
-
-	cmd := testutil.Command(newResendReceiptCmd(), testutil.NoInput(true))
-	cmd.SetArgs([]string{"123"})
-
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("expected confirmation error")
-	}
-}

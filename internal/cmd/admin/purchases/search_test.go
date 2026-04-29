@@ -183,6 +183,9 @@ func TestSearch_HasMoreShowsTruncated(t *testing.T) {
 	if !strings.Contains(out, "(truncated)") {
 		t.Errorf("expected truncated marker when has_more=true: %q", out)
 	}
+	if !strings.Contains(out, "Showing 1 of 25 purchase(s) for buyer@example.com (truncated)") {
+		t.Errorf("expected 'Showing %%d of %%d ... (truncated)' framing when len(purchases) < count, got: %q", out)
+	}
 }
 
 func TestSearch_PlainOutput(t *testing.T) {

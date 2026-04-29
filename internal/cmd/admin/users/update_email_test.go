@@ -87,6 +87,52 @@ func TestUpdateEmail_PostsBothEmails(t *testing.T) {
 	}
 }
 
+func TestUpdateEmail_FallbackHeadlineMatchesPendingConfirmation(t *testing.T) {
+	cases := []struct {
+		name             string
+		pending          bool
+		wantHeadline     string
+		dontWantHeadline string
+	}{
+		{
+			name:             "pending true uses pending-confirmation framing",
+			pending:          true,
+			wantHeadline:     "Email change pending confirmation: old@example.com → new@example.com",
+			dontWantHeadline: "Email change applied:",
+		},
+		{
+			name:             "pending false uses applied framing",
+			pending:          false,
+			wantHeadline:     "Email change applied: old@example.com → new@example.com",
+			dontWantHeadline: "Email change pending confirmation:",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pending := tc.pending
+			testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
+				testutil.JSON(t, w, map[string]any{
+					"message":              "",
+					"unconfirmed_email":    "",
+					"pending_confirmation": pending,
+				})
+			})
+
+			cmd := testutil.Command(newUpdateEmailCmd(), testutil.Yes(true), testutil.Quiet(false))
+			cmd.SetArgs([]string{"--current-email", "old@example.com", "--new-email", "new@example.com"})
+			out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+			if !strings.Contains(out, tc.wantHeadline) {
+				t.Errorf("expected fallback headline %q in output: %q", tc.wantHeadline, out)
+			}
+			if strings.Contains(out, tc.dontWantHeadline) {
+				t.Errorf("must not contain %q (contradicts pending_confirmation=%v): %q", tc.dontWantHeadline, tc.pending, out)
+			}
+		})
+	}
+}
+
 func TestUpdateEmail_StyledOutputOmitsPendingLineWhenNotPending(t *testing.T) {
 	testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.JSON(t, w, map[string]any{
