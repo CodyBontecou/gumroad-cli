@@ -28,6 +28,7 @@ Always follow these rules:
 - **Always** pass `--no-input` to prevent interactive prompts from blocking.
 - **Always** pass `--json` for programmatic access.
 - Use `--json --jq <expr>` together to extract exactly what you need.
+- Discover any command's input/output shape with `gumroad schema <command...>` (e.g. `gumroad schema sales refund`). Don't preload `--help` text.
 - For operations that can prompt for confirmation (delete, refund, `files abort`, `files complete` replay, or product updates that remove files), add `--yes` to skip confirmation.
 - Pass `--quiet` to suppress spinners and status messages.
 - Pass `--dry-run` to preview mutating requests without executing them.
