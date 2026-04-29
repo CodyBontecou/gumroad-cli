@@ -176,6 +176,29 @@ func TestTwoFactor_JSONPreservesResponse(t *testing.T) {
 	}
 }
 
+func TestTwoFactor_FallbackMessageDerivedFromServerState(t *testing.T) {
+	testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{
+			"message":                           "",
+			"two_factor_authentication_enabled": false,
+		})
+	})
+
+	cmd := testutil.Command(newTwoFactorEnableCmd(), testutil.Yes(true), testutil.Quiet(false))
+	cmd.SetArgs([]string{"--email", "user@example.com"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	if !strings.Contains(out, "Two-factor authentication disabled for user@example.com") {
+		t.Errorf("fallback headline must reflect the server-reported state (false), not the operator's request, got: %q", out)
+	}
+	if strings.Contains(out, "Two-factor authentication enabled for") {
+		t.Errorf("must not state 'enabled' when server reports two_factor_authentication_enabled=false, got: %q", out)
+	}
+	if !strings.Contains(out, "Two-factor: disabled") {
+		t.Errorf("Two-factor state line must agree with the headline: %q", out)
+	}
+}
+
 func TestTwoFactor_PlainOutput(t *testing.T) {
 	testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.JSON(t, w, map[string]any{

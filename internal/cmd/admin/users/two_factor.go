@@ -112,21 +112,17 @@ func runTwoFactor(c *cobra.Command, email string, enabled bool, confirmMsg, canc
 	if err != nil {
 		return err
 	}
-	return renderTwoFactor(opts, email, enabled, decoded)
+	return renderTwoFactor(opts, email, decoded)
 }
 
-func renderTwoFactor(opts cmdutil.Options, email string, requested bool, resp twoFactorResponse) error {
-	message := resp.Message
-	if message == "" {
-		if requested {
-			message = "Two-factor authentication enabled for " + email
-		} else {
-			message = "Two-factor authentication disabled for " + email
-		}
-	}
+func renderTwoFactor(opts cmdutil.Options, email string, resp twoFactorResponse) error {
 	state := "disabled"
 	if resp.TwoFactorAuthenticationEnabled {
 		state = "enabled"
+	}
+	message := resp.Message
+	if message == "" {
+		message = "Two-factor authentication " + state + " for " + email
 	}
 
 	if opts.PlainOutput {
