@@ -126,6 +126,45 @@ func TestValidateOutputFlags_RejectsPlainJSONAndJQ(t *testing.T) {
 	}
 }
 
+func TestRootCmd_RejectsNDJSONWithoutJSON(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"sales", "list", "--ndjson", "--all"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --ndjson without --json to error")
+	}
+	if !strings.Contains(err.Error(), "--ndjson requires --json") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRootCmd_RejectsNDJSONWithoutAllOnListCommand(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"sales", "list", "--ndjson", "--json"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --ndjson without --all to error")
+	}
+	if !strings.Contains(err.Error(), "--ndjson requires --all") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRootCmd_RejectsNDJSONOnCommandWithoutAllFlag(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"user", "--ndjson", "--json"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --ndjson on a non-paginated command to error")
+	}
+	if !strings.Contains(err.Error(), "--ndjson requires --all") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRootCmd_RejectsNegativePageDelay(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"user", "--page-delay=-1s"})
