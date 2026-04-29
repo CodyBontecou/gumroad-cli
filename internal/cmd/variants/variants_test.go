@@ -533,6 +533,73 @@ func TestCreate_APIError(t *testing.T) {
 	}
 }
 
+func TestCreate_JSONBody(t *testing.T) {
+	var gotName, gotDesc, gotPriceDiff, gotMaxPurchaseCount string
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm failed: %v", err)
+		}
+		gotName = r.PostForm.Get("name")
+		gotDesc = r.PostForm.Get("description")
+		gotPriceDiff = r.PostForm.Get("price_difference_cents")
+		gotMaxPurchaseCount = r.PostForm.Get("max_purchase_count")
+		testutil.JSON(t, w, map[string]any{"variant": map[string]any{"id": "v1", "name": gotName}})
+	})
+
+	cmd := newCreateCmd()
+	cmd.SetArgs([]string{
+		"--product", "p1", "--category", "vc1",
+		"--json-body", `{"name":"FromJSON","description":"Body desc","price_difference_cents":750,"max_purchase_count":3}`,
+	})
+	testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	if gotName != "FromJSON" {
+		t.Errorf("name=%q want FromJSON", gotName)
+	}
+	if gotDesc != "Body desc" {
+		t.Errorf("description=%q", gotDesc)
+	}
+	if gotPriceDiff != "750" {
+		t.Errorf("price_difference_cents=%q want 750", gotPriceDiff)
+	}
+	if gotMaxPurchaseCount != "3" {
+		t.Errorf("max_purchase_count=%q want 3", gotMaxPurchaseCount)
+	}
+}
+
+func TestCreate_JSONBodyConflictsWithFlags(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not reach API")
+	})
+
+	cmd := newCreateCmd()
+	cmd.SetArgs([]string{
+		"--product", "p1", "--category", "vc1",
+		"--json-body", `{"name":"FromJSON"}`,
+		"--name", "FromFlag",
+	})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--json-body") {
+		t.Fatalf("expected --json-body conflict error, got: %v", err)
+	}
+}
+
+func TestCreate_JSONBodyInvalidJSON(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not reach API")
+	})
+
+	cmd := newCreateCmd()
+	cmd.SetArgs([]string{
+		"--product", "p1", "--category", "vc1",
+		"--json-body", `{not json`,
+	})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected JSON parse error")
+	}
+}
+
 // --- Update ---
 
 func TestUpdate_Flags(t *testing.T) {

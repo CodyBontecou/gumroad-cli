@@ -28,6 +28,7 @@ Always follow these rules:
 - **Always** pass `--no-input` to prevent interactive prompts from blocking.
 - **Always** pass `--json` for programmatic access.
 - Use `--json --jq <expr>` together to extract exactly what you need.
+- For commands that accept a `--json-body` flag (e.g. `gumroad variants create`), prefer passing the full request body as JSON — either inline or with `--json-body -` to read from stdin. Cannot be combined with the per-field flags it replaces.
 - For operations that can prompt for confirmation (delete, refund, `files abort`, `files complete` replay, or product updates that remove files), add `--yes` to skip confirmation.
 - Pass `--quiet` to suppress spinners and status messages.
 - Pass `--dry-run` to preview mutating requests without executing them.

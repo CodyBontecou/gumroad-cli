@@ -16,8 +16,10 @@ type createVariantResponse struct {
 	} `json:"variant"`
 }
 
+var createBodyFlags = []string{"name", "description", "price-difference", "max-purchase-count"}
+
 func newCreateCmd() *cobra.Command {
-	var product, category, name, description, priceDifference string
+	var product, category, name, description, priceDifference, jsonBody string
 	var maxPurchaseCount int
 
 	cmd := &cobra.Command{
@@ -25,14 +27,30 @@ func newCreateCmd() *cobra.Command {
 		Short: "Create a variant",
 		Args:  cmdutil.ExactArgs(0),
 		RunE: func(c *cobra.Command, args []string) error {
-			if err := cmdutil.RequireNonNegativeIntFlag(c, "max-purchase-count", maxPurchaseCount); err != nil {
-				return err
-			}
+			opts := cmdutil.OptionsFrom(c)
+
 			if product == "" {
 				return cmdutil.MissingFlagError(c, "--product")
 			}
 			if category == "" {
 				return cmdutil.MissingFlagError(c, "--category")
+			}
+
+			path := cmdutil.JoinPath("products", product, "variant_categories", category, "variants")
+
+			if c.Flags().Changed("json-body") {
+				if err := cmdutil.RejectFlagsWithJSONBody(c, createBodyFlags...); err != nil {
+					return err
+				}
+				params, err := cmdutil.ParseJSONBody(jsonBody, opts.In())
+				if err != nil {
+					return cmdutil.UsageErrorf(c, "%s", err.Error())
+				}
+				return runCreateRequest(opts, path, params)
+			}
+
+			if err := cmdutil.RequireNonNegativeIntFlag(c, "max-purchase-count", maxPurchaseCount); err != nil {
+				return err
 			}
 			if name == "" {
 				return cmdutil.MissingFlagError(c, "--name")
@@ -58,22 +76,7 @@ func newCreateCmd() *cobra.Command {
 				params.Set("max_purchase_count", strconv.Itoa(maxPurchaseCount))
 			}
 
-			opts := cmdutil.OptionsFrom(c)
-			path := cmdutil.JoinPath("products", product, "variant_categories", category, "variants")
-			return cmdutil.RunRequestDecoded[createVariantResponse](opts,
-				"Creating variant...", "POST", path, params,
-				func(resp createVariantResponse) error {
-					v := resp.Variant
-					if opts.PlainOutput {
-						return output.PrintPlain(opts.Out(), [][]string{{v.ID, v.Name}})
-					}
-					if opts.Quiet {
-						return nil
-					}
-					s := opts.Style()
-					return output.Writef(opts.Out(), "%s %s (%s)\n",
-						s.Bold("Created variant:"), v.Name, s.Dim(v.ID))
-				})
+			return runCreateRequest(opts, path, params)
 		},
 	}
 
@@ -83,6 +86,24 @@ func newCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "Variant description")
 	cmd.Flags().StringVar(&priceDifference, "price-difference", "", "Price difference (e.g. 5.00, -1.50)")
 	cmd.Flags().IntVar(&maxPurchaseCount, "max-purchase-count", 0, "Maximum number of purchases")
+	cmd.Flags().StringVar(&jsonBody, "json-body", "", "Raw JSON body (or '-' to read from stdin) — replaces individual body flags")
 
 	return cmd
+}
+
+func runCreateRequest(opts cmdutil.Options, path string, params url.Values) error {
+	return cmdutil.RunRequestDecoded[createVariantResponse](opts,
+		"Creating variant...", "POST", path, params,
+		func(resp createVariantResponse) error {
+			v := resp.Variant
+			if opts.PlainOutput {
+				return output.PrintPlain(opts.Out(), [][]string{{v.ID, v.Name}})
+			}
+			if opts.Quiet {
+				return nil
+			}
+			s := opts.Style()
+			return output.Writef(opts.Out(), "%s %s (%s)\n",
+				s.Bold("Created variant:"), v.Name, s.Dim(v.ID))
+		})
 }
