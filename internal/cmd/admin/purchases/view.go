@@ -57,14 +57,17 @@ func productLabel(p purchase) string {
 	return p.ProductID
 }
 
-func renderPurchase(opts cmdutil.Options, p purchase) error {
-	product := productLabel(p)
-
-	amount := p.FormattedTotalPrice
-	if amount == "" && p.PriceCents != 0 {
-		amount = fmt.Sprintf("%d cents", p.PriceCents)
+func amountLabel(p purchase) string {
+	if p.FormattedTotalPrice != "" {
+		return p.FormattedTotalPrice
 	}
+	if p.PriceCents != 0 {
+		return fmt.Sprintf("%d cents", p.PriceCents)
+	}
+	return ""
+}
 
+func statusLabel(p purchase) string {
 	status := p.PurchaseState
 	if p.RefundStatus != "" {
 		if status != "" {
@@ -72,6 +75,13 @@ func renderPurchase(opts cmdutil.Options, p purchase) error {
 		}
 		status += p.RefundStatus
 	}
+	return status
+}
+
+func renderPurchase(opts cmdutil.Options, p purchase) error {
+	product := productLabel(p)
+	amount := amountLabel(p)
+	status := statusLabel(p)
 
 	if opts.PlainOutput {
 		return output.PrintPlain(opts.Out(), [][]string{

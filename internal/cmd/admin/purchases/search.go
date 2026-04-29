@@ -69,7 +69,7 @@ func renderSearch(opts cmdutil.Options, email string, resp searchResponse) error
 	if opts.PlainOutput {
 		rows := make([][]string, 0, len(resp.Purchases))
 		for _, p := range resp.Purchases {
-			rows = append(rows, []string{p.ID, p.Email, productLabel(p), p.FormattedTotalPrice, p.PurchaseState, p.CreatedAt})
+			rows = append(rows, []string{p.ID, p.Email, productLabel(p), amountLabel(p), statusLabel(p), p.CreatedAt})
 		}
 		return output.PrintPlain(opts.Out(), rows)
 	}

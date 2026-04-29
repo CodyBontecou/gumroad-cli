@@ -227,6 +227,36 @@ func TestSearch_PlainOutput(t *testing.T) {
 	}
 }
 
+func TestSearch_PlainOutputAmountAndStatusFallbacksMatchStyled(t *testing.T) {
+	testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
+		testutil.JSON(t, w, map[string]any{
+			"purchases": []map[string]any{
+				{
+					"id":             "9",
+					"email":          "buyer@example.com",
+					"product_name":   "Course",
+					"price_cents":    1200,
+					"purchase_state": "successful",
+					"refund_status":  "partially_refunded",
+					"created_at":     "2026-04-24T12:00:00Z",
+				},
+			},
+			"count":    1,
+			"limit":    25,
+			"has_more": false,
+		})
+	})
+
+	cmd := testutil.Command(newSearchCmd(), testutil.PlainOutput())
+	cmd.SetArgs([]string{"--email", "buyer@example.com"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	want := "9\tbuyer@example.com\tCourse\t1200 cents\tsuccessful, partially_refunded\t2026-04-24T12:00:00Z"
+	if !strings.Contains(out, want) {
+		t.Fatalf("plain row must derive amount from price_cents and combine purchase_state with refund_status (matching styled mode), got: %q", out)
+	}
+}
+
 func TestSearch_JSONPreservesResponse(t *testing.T) {
 	testutil.SetupAdmin(t, func(w http.ResponseWriter, r *http.Request) {
 		testutil.JSON(t, w, map[string]any{
