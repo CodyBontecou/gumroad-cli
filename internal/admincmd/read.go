@@ -57,10 +57,33 @@ func RunGetDecoded[T any](opts cmdutil.Options, spinnerMessage, path string, par
 	}, render)
 }
 
+// FetchGetDecoded fetches a GET endpoint and decodes the response without
+// rendering it. Use it when chaining requests where only the data is needed.
+func FetchGetDecoded[T any](opts cmdutil.Options, spinnerMessage, path string, params url.Values) (T, error) {
+	var zero T
+	data, err := runAuthenticatedData(opts, spinnerMessage, func(client *adminapi.Client) (json.RawMessage, error) {
+		return client.Get(path, params)
+	})
+	if err != nil {
+		return zero, err
+	}
+	return cmdutil.DecodeJSON[T](data)
+}
+
 func RunPostJSONDecoded[T any](opts cmdutil.Options, spinnerMessage, path string, payload any, render func(T) error) error {
 	return RunDecoded[T](opts, spinnerMessage, func(client *adminapi.Client) (json.RawMessage, error) {
 		return client.PostJSON(path, payload)
 	}, render)
+}
+
+// FetchPostJSON posts a JSON payload and returns the raw response without
+// rendering it. Use this when the caller needs to keep transport-level
+// failures distinguishable from post-success render/decode errors (e.g. so
+// only the POST failure gets a "request failed" wrapper).
+func FetchPostJSON(opts cmdutil.Options, spinnerMessage, path string, payload any) (json.RawMessage, error) {
+	return runAuthenticatedData(opts, spinnerMessage, func(client *adminapi.Client) (json.RawMessage, error) {
+		return client.PostJSON(path, payload)
+	})
 }
 
 func runAuthenticatedData(opts cmdutil.Options, spinnerMessage string, run ClientRunner) (json.RawMessage, error) {
