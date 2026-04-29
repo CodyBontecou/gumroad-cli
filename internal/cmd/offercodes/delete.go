@@ -13,7 +13,7 @@ func newDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <code_id>",
 		Short: "Delete an offer code",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			if product == "" {

@@ -37,6 +37,12 @@ func newListCmd() *cobra.Command {
 			if category == "" {
 				return cmdutil.MissingFlagError(c, "--category")
 			}
+			if err := cmdutil.RequireSafeIDFlag(c, "product", product); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "category", category); err != nil {
+				return err
+			}
 
 			path := cmdutil.JoinPath("products", product, "variant_categories", category, "variants")
 			return cmdutil.RunRequestDecoded[variantsListResponse](opts, "Fetching variants...", "GET", path, url.Values{}, func(resp variantsListResponse) error {

@@ -32,7 +32,7 @@ func newUpdateCmd() *cobra.Command {
   gumroad products update <id> --tag art --tag digital
   gumroad products update <id> --file ./pack.zip
   gumroad products update <id> --replace-files --keep-file file_123 --file ./new-pack.zip`,
-		Args: cmdutil.ExactArgs(1),
+		Args: cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			flags := c.Flags()

@@ -15,7 +15,7 @@ func newRefundCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "refund <id>",
 		Short: "Refund a sale",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 

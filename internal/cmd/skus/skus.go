@@ -16,7 +16,7 @@ func NewProductSKUsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "skus <id>",
 		Short:   "List SKUs for a product",
-		Args:    cmdutil.ExactArgs(1),
+		Args:    cmdutil.SafeIDArgs(1),
 		Example: "  gumroad products skus <id>",
 		RunE: func(c *cobra.Command, args []string) error {
 			return runList(c, args[0])

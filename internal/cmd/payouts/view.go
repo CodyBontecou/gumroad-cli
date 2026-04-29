@@ -16,7 +16,7 @@ func newViewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <id>",
 		Short: "View a payout",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			params := url.Values{}

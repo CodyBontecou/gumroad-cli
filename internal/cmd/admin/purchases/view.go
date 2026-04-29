@@ -36,7 +36,7 @@ func newViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "view <purchase-id>",
 		Short: "View an admin purchase record",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			path := cmdutil.JoinPath("purchases", args[0])

@@ -50,7 +50,7 @@ cancels the linked subscription after a successful refund.`,
   gumroad admin purchases refund 12345 --email buyer@example.com --amount 5.00
   gumroad admin purchases refund 12345 --email buyer@example.com --force
   gumroad admin purchases refund 12345 --email buyer@example.com --cancel-subscription`,
-		Args: cmdutil.ExactArgs(1),
+		Args: cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 

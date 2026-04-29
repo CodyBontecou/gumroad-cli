@@ -17,7 +17,7 @@ func newViewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <code_id>",
 		Short: "View an offer code",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			if product == "" {

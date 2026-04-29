@@ -14,7 +14,7 @@ func newDeleteCmd() *cobra.Command {
 		Long: `Delete a webhook.
 
 Note: This only succeeds when the token's OAuth app matches the subscription's app.`,
-		Args: cmdutil.ExactArgs(1),
+		Args: cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			ok, err := cmdutil.ConfirmAction(opts, "Delete webhook "+args[0]+"?")

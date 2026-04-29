@@ -37,6 +37,12 @@ func newCreateCmd() *cobra.Command {
 			if name == "" {
 				return cmdutil.MissingFlagError(c, "--name")
 			}
+			if err := cmdutil.RequireSafeIDFlag(c, "product", product); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "category", category); err != nil {
+				return err
+			}
 
 			flags := c.Flags()
 			hasPriceDifference := flags.Changed("price-difference")

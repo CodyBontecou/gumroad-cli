@@ -38,7 +38,7 @@ func newViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "view <id>",
 		Short:   "View a product",
-		Args:    cmdutil.ExactArgs(1),
+		Args:    cmdutil.SafeIDArgs(1),
 		Example: `  gumroad products view <id>`,
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)

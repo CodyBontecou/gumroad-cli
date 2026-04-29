@@ -14,7 +14,7 @@ func newViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "view <id>",
 		Short: "View a subscriber",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			return cmdutil.RunRequest(opts, "Fetching subscriber...", "GET", cmdutil.JoinPath("subscribers", args[0]), url.Values{}, func(data json.RawMessage) error {

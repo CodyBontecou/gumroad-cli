@@ -13,7 +13,7 @@ func newShipCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ship <id>",
 		Short: "Mark a sale as shipped",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			if err := cmdutil.RequireHTTPURLFlag(c, "tracking-url", trackingURL); err != nil {

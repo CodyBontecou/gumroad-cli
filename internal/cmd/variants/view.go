@@ -17,7 +17,7 @@ func newViewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <variant_id>",
 		Short: "View a variant",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			if product == "" {
@@ -25,6 +25,12 @@ func newViewCmd() *cobra.Command {
 			}
 			if category == "" {
 				return cmdutil.MissingFlagError(c, "--category")
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "product", product); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "category", category); err != nil {
+				return err
 			}
 
 			path := cmdutil.JoinPath("products", product, "variant_categories", category, "variants", args[0])

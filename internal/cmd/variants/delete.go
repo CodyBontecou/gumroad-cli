@@ -13,7 +13,7 @@ func newDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <variant_id>",
 		Short: "Delete a variant",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			if product == "" {
@@ -21,6 +21,12 @@ func newDeleteCmd() *cobra.Command {
 			}
 			if category == "" {
 				return cmdutil.MissingFlagError(c, "--category")
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "product", product); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "category", category); err != nil {
+				return err
 			}
 
 			ok, err := cmdutil.ConfirmAction(opts, "Delete variant "+args[0]+"?")

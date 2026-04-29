@@ -15,7 +15,7 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <variant_id>",
 		Short: "Update a variant",
-		Args:  cmdutil.ExactArgs(1),
+		Args:  cmdutil.SafeIDArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := cmdutil.RequireNonNegativeIntFlag(c, "max-purchase-count", maxPurchaseCount); err != nil {
 				return err
@@ -27,6 +27,12 @@ func newUpdateCmd() *cobra.Command {
 				return cmdutil.MissingFlagError(c, "--category")
 			}
 			if err := cmdutil.RequireAnyFlagChanged(c, "name", "description", "price-difference", "max-purchase-count"); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "product", product); err != nil {
+				return err
+			}
+			if err := cmdutil.RequireSafeIDFlag(c, "category", category); err != nil {
 				return err
 			}
 
