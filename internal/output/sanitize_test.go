@@ -135,6 +135,46 @@ func TestSanitizeJSONBytes_NeutralizesPromptInjection(t *testing.T) {
 	}
 }
 
+func TestSanitizeJSONBytes_StripsC1Controls(t *testing.T) {
+	in := []byte("{\"note\":\"hello\\u0085world\\u009bevil\"}")
+	got, err := output.SanitizeJSONBytes(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(got, &resp); err != nil {
+		t.Fatal(err)
+	}
+	note, _ := resp["note"].(string)
+	for _, r := range note {
+		if r >= 0x80 && r <= 0x9f {
+			t.Errorf("C1 control %U survived: %q", r, note)
+		}
+	}
+	if !strings.Contains(note, "hello") || !strings.Contains(note, "world") {
+		t.Errorf("readable text lost: %q", note)
+	}
+}
+
+func TestSanitizeJSONBytes_StripsBidiOverrides(t *testing.T) {
+	in := []byte("{\"name\":\"safe\\u202etxt.exe\"}")
+	got, err := output.SanitizeJSONBytes(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(got, &resp); err != nil {
+		t.Fatal(err)
+	}
+	name, _ := resp["name"].(string)
+	if strings.ContainsRune(name, 0x202e) {
+		t.Errorf("bidi override not stripped: %q", name)
+	}
+	if !strings.Contains(name, "safe") || !strings.Contains(name, "txt.exe") {
+		t.Errorf("readable text lost: %q", name)
+	}
+}
+
 func TestSanitizeJSONBytes_RejectsInvalidJSON(t *testing.T) {
 	if _, err := output.SanitizeJSONBytes([]byte(`{not json`)); err == nil {
 		t.Fatal("expected error")

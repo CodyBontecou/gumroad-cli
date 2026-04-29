@@ -126,6 +126,32 @@ func TestValidateOutputFlags_RejectsPlainJSONAndJQ(t *testing.T) {
 	}
 }
 
+func TestRootCmd_RejectsSafeJSONWithoutJSON(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"user", "--safe-json"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --safe-json without --json to error")
+	}
+	if !strings.Contains(err.Error(), "--safe-json requires --json") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRootCmd_RejectsSafeJSONWithAll(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"sales", "list", "--safe-json", "--json", "--all"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --safe-json with --all to error")
+	}
+	if !strings.Contains(err.Error(), "--safe-json does not yet apply to paginated --all") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRootCmd_RejectsNegativePageDelay(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"user", "--page-delay=-1s"})

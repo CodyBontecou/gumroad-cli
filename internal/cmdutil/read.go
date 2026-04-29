@@ -163,15 +163,22 @@ func normalizeJSONBody(data json.RawMessage) json.RawMessage {
 }
 
 func PrintJSONResponse(opts Options, data json.RawMessage) error {
-	body := normalizeJSONBody(data)
-	if opts.SafeJSON {
-		cleaned, err := output.SanitizeJSONBytes(body)
-		if err != nil {
-			return err
-		}
-		body = cleaned
+	body, err := maybeSanitizeJSON(opts, normalizeJSONBody(data))
+	if err != nil {
+		return err
 	}
 	return output.PrintJSON(opts.Out(), body, opts.JQExpr)
+}
+
+func maybeSanitizeJSON(opts Options, body json.RawMessage) (json.RawMessage, error) {
+	if !opts.SafeJSON {
+		return body, nil
+	}
+	cleaned, err := output.SanitizeJSONBytes(body)
+	if err != nil {
+		return nil, err
+	}
+	return cleaned, nil
 }
 
 type mutationOutput struct {
@@ -199,7 +206,11 @@ func printMutationPayload(opts Options, payload mutationOutput) error {
 	if err != nil {
 		return fmt.Errorf("could not encode JSON output: %w", err)
 	}
-	return output.PrintJSON(opts.Out(), data, opts.JQExpr)
+	body, err := maybeSanitizeJSON(opts, data)
+	if err != nil {
+		return err
+	}
+	return output.PrintJSON(opts.Out(), body, opts.JQExpr)
 }
 
 // PrintMutationSuccess renders a successful mutating command with the shared

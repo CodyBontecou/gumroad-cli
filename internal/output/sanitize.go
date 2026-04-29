@@ -11,7 +11,14 @@ const (
 	injectionMarker     = "[redacted-injection]"
 	firstPrintableASCII = 0x20
 	deleteASCII         = 0x7f
+	firstC1Control      = 0x80
+	lastC1Control       = 0x9f
 )
+
+var bidiOverrides = map[rune]struct{}{
+	0x202a: {}, 0x202b: {}, 0x202c: {}, 0x202d: {}, 0x202e: {},
+	0x2066: {}, 0x2067: {}, 0x2068: {}, 0x2069: {},
+}
 
 var (
 	ansiEscapeRE     = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
@@ -74,6 +81,12 @@ func stripDisallowedControlChars(s string) string {
 			continue
 		}
 		if r < firstPrintableASCII || r == deleteASCII {
+			continue
+		}
+		if r >= firstC1Control && r <= lastC1Control {
+			continue
+		}
+		if _, isBidi := bidiOverrides[r]; isBidi {
 			continue
 		}
 		b.WriteRune(r)

@@ -36,6 +36,25 @@ func TestPrintJSONResponse_SafeJSONInvalidJSONReturnsError(t *testing.T) {
 	}
 }
 
+func TestPrintMutationSuccess_SafeJSONStripsAnsiInResult(t *testing.T) {
+	var buf bytes.Buffer
+	opts := cmdutil.DefaultOptions()
+	opts.JSONOutput = true
+	opts.SafeJSON = true
+	opts.Stdout = &buf
+
+	body := []byte("{\"refund_note\":\"\\u001b[31mrefunded\\u001b[0m\"}")
+	if err := cmdutil.PrintMutationSuccess(opts, body, "sale_123", "Refunded"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(buf.String(), "\x1b") {
+		t.Errorf("ESC byte not stripped from mutation result: %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "refunded") {
+		t.Errorf("readable text lost: %q", buf.String())
+	}
+}
+
 func TestPrintJSONResponse_NoSafeJSONLeavesPayloadIntact(t *testing.T) {
 	var buf bytes.Buffer
 	opts := cmdutil.DefaultOptions()

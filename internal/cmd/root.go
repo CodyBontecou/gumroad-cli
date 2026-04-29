@@ -90,7 +90,7 @@ func NewRootCmd() *cobra.Command {
 
 	// Global flags
 	cmd.PersistentFlags().BoolVar(&opts.JSONOutput, "json", false, "Output as JSON")
-	cmd.PersistentFlags().BoolVar(&opts.SafeJSON, "safe-json", false, "Sanitize JSON output: strip ANSI escapes, control chars, and known prompt-injection phrases (requires --json)")
+	cmd.PersistentFlags().BoolVar(&opts.SafeJSON, "safe-json", false, "Sanitize JSON output: strip CSI/SGR escapes, ASCII/C1 control chars, bidi overrides, and a starter list of prompt-injection phrases (requires --json; not yet supported with --all)")
 	cmd.PersistentFlags().BoolVar(&opts.PlainOutput, "plain", false, "Output as plain tab-separated text")
 	cmd.PersistentFlags().StringVar(&opts.JQExpr, "jq", "", "Filter JSON output with a jq expression")
 	cmd.PersistentFlags().BoolVarP(&opts.Quiet, "quiet", "q", false, "Suppress non-essential output")
@@ -148,8 +148,14 @@ func validateOutputFlags(cmd *cobra.Command, opts cmdutil.Options) error {
 }
 
 func validateSafeJSONFlag(cmd *cobra.Command, opts cmdutil.Options) error {
-	if opts.SafeJSON && !opts.JSONOutput {
+	if !opts.SafeJSON {
+		return nil
+	}
+	if !opts.JSONOutput {
 		return cmdutil.NewUsageError(cmd, "--safe-json requires --json")
+	}
+	if allFlag := cmd.Flags().Lookup("all"); allFlag != nil && allFlag.Changed {
+		return cmdutil.NewUsageError(cmd, "--safe-json does not yet apply to paginated --all output; omit --all or drop --safe-json")
 	}
 	return nil
 }
