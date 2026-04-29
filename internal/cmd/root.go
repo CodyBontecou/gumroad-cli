@@ -68,6 +68,9 @@ func NewRootCmd() *cobra.Command {
 			if err := validateOutputFlags(cmd, opts); err != nil {
 				return err
 			}
+			if err := validateNDJSONFlag(cmd, opts); err != nil {
+				return err
+			}
 			if err := cmdutil.RequireNonNegativeDurationFlag(cmd, "page-delay", opts.PageDelay); err != nil {
 				return err
 			}
@@ -87,6 +90,7 @@ func NewRootCmd() *cobra.Command {
 
 	// Global flags
 	cmd.PersistentFlags().BoolVar(&opts.JSONOutput, "json", false, "Output as JSON")
+	cmd.PersistentFlags().BoolVar(&opts.NDJSON, "ndjson", false, "Stream paginated --all results as newline-delimited JSON (requires --json)")
 	cmd.PersistentFlags().BoolVar(&opts.PlainOutput, "plain", false, "Output as plain tab-separated text")
 	cmd.PersistentFlags().StringVar(&opts.JQExpr, "jq", "", "Filter JSON output with a jq expression")
 	cmd.PersistentFlags().BoolVarP(&opts.Quiet, "quiet", "q", false, "Suppress non-essential output")
@@ -154,6 +158,13 @@ func plainOutputConflictMessage(opts cmdutil.Options) string {
 	default:
 		return ""
 	}
+}
+
+func validateNDJSONFlag(cmd *cobra.Command, opts cmdutil.Options) error {
+	if opts.NDJSON && !opts.JSONOutput {
+		return cmdutil.NewUsageError(cmd, "--ndjson requires --json")
+	}
+	return nil
 }
 
 func Execute() {

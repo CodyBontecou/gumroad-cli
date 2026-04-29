@@ -105,6 +105,50 @@ func TestList_AllFetchesAllPages(t *testing.T) {
 	}
 }
 
+func TestList_AllNDJSONEmitsOneRecordPerLine(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page_key") {
+		case "":
+			testutil.JSON(t, w, map[string]any{
+				"sales": []map[string]any{
+					{"id": "s1", "email": "buyer1@example.com"},
+					{"id": "s2", "email": "buyer2@example.com"},
+				},
+				"next_page_key": "k1",
+			})
+		case "k1":
+			testutil.JSON(t, w, map[string]any{
+				"sales": []map[string]any{
+					{"id": "s3", "email": "buyer3@example.com"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected page_key")
+		}
+	})
+
+	cmd := testutil.Command(newListCmd(), testutil.JSONOutput(), func(opts *cmdutil.Options) { opts.NDJSON = true })
+	cmd.SetArgs([]string{"--all"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3:\n%s", len(lines), out)
+	}
+	for i, want := range []string{"s1", "s2", "s3"} {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(lines[i]), &rec); err != nil {
+			t.Fatalf("line %d not valid JSON: %v\n%q", i, err, lines[i])
+		}
+		if rec["id"] != want {
+			t.Errorf("line %d id=%v want %s", i, rec["id"], want)
+		}
+	}
+	if strings.Contains(out, `"sales"`) {
+		t.Errorf("NDJSON output should not contain envelope key, got: %s", out)
+	}
+}
+
 func TestList_SinglePageDoesNotWalkPages(t *testing.T) {
 	requests := 0
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {

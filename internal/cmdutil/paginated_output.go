@@ -26,6 +26,8 @@ type paginatedItemPrinter func(paginatedItemWriter) error
 // style paginated commands while preserving atomic JSON/JQ output.
 func StreamPaginatedPages[T any](opts Options, cfg PaginatedPageOutputConfig[T]) error {
 	switch {
+	case opts.NDJSON && opts.JSONOutput:
+		return streamPaginatedNDJSON(opts, cfg)
 	case opts.JQExpr != "":
 		return streamPaginatedJSONWithJQ(opts, cfg)
 	case opts.JSONOutput:
@@ -35,6 +37,12 @@ func StreamPaginatedPages[T any](opts Options, cfg PaginatedPageOutputConfig[T])
 	default:
 		return streamPaginatedTable(opts, cfg)
 	}
+}
+
+func streamPaginatedNDJSON[T any](opts Options, cfg PaginatedPageOutputConfig[T]) error {
+	return streamPaginatedItems(opts, cfg, func(writeItems paginatedItemWriter) error {
+		return output.PrintNDJSON(opts.Out(), writeItems)
+	})
 }
 
 func streamPaginatedJSON[T any](opts Options, cfg PaginatedPageOutputConfig[T]) error {

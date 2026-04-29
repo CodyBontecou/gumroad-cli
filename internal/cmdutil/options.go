@@ -20,6 +20,7 @@ type Options struct {
 	Stdout      io.Writer
 	Stderr      io.Writer
 	JSONOutput  bool
+	NDJSON      bool
 	PlainOutput bool
 	JQExpr      string
 	Quiet       bool
