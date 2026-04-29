@@ -334,6 +334,24 @@ func TestView_RawFixture(t *testing.T) {
 	}
 }
 
+func TestView_SafeJSONStripsAnsi(t *testing.T) {
+	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"sale":{"id":"s1","email":"buyer@example.com","product_name":"\u001b[31mAlert\u001b[0m"}}`))
+	})
+
+	cmd := testutil.Command(newViewCmd(), testutil.JSONOutput(), func(opts *cmdutil.Options) { opts.SafeJSON = true })
+	cmd.SetArgs([]string{"s1"})
+	out := testutil.CaptureStdout(func() { testutil.MustExecute(t, cmd) })
+
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("safe-json should strip ESC byte, got: %q", out)
+	}
+	if !strings.Contains(out, "Alert") {
+		t.Errorf("readable text should be preserved, got: %q", out)
+	}
+}
+
 func TestRefund_RequiresConfirmation(t *testing.T) {
 	testutil.Setup(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("should not reach API without confirmation")

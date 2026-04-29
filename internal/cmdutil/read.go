@@ -162,10 +162,16 @@ func normalizeJSONBody(data json.RawMessage) json.RawMessage {
 	return data
 }
 
-// PrintJSONResponse renders a raw API response using the command's JSON/JQ
-// settings while preserving the shared empty-body normalization.
 func PrintJSONResponse(opts Options, data json.RawMessage) error {
-	return output.PrintJSON(opts.Out(), normalizeJSONBody(data), opts.JQExpr)
+	body := normalizeJSONBody(data)
+	if opts.SafeJSON {
+		cleaned, err := output.SanitizeJSONBytes(body)
+		if err != nil {
+			return err
+		}
+		body = cleaned
+	}
+	return output.PrintJSON(opts.Out(), body, opts.JQExpr)
 }
 
 type mutationOutput struct {

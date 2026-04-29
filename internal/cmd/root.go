@@ -68,6 +68,9 @@ func NewRootCmd() *cobra.Command {
 			if err := validateOutputFlags(cmd, opts); err != nil {
 				return err
 			}
+			if err := validateSafeJSONFlag(cmd, opts); err != nil {
+				return err
+			}
 			if err := cmdutil.RequireNonNegativeDurationFlag(cmd, "page-delay", opts.PageDelay); err != nil {
 				return err
 			}
@@ -87,6 +90,7 @@ func NewRootCmd() *cobra.Command {
 
 	// Global flags
 	cmd.PersistentFlags().BoolVar(&opts.JSONOutput, "json", false, "Output as JSON")
+	cmd.PersistentFlags().BoolVar(&opts.SafeJSON, "safe-json", false, "Sanitize JSON output: strip ANSI escapes, control chars, and known prompt-injection phrases (requires --json)")
 	cmd.PersistentFlags().BoolVar(&opts.PlainOutput, "plain", false, "Output as plain tab-separated text")
 	cmd.PersistentFlags().StringVar(&opts.JQExpr, "jq", "", "Filter JSON output with a jq expression")
 	cmd.PersistentFlags().BoolVarP(&opts.Quiet, "quiet", "q", false, "Suppress non-essential output")
@@ -141,6 +145,13 @@ func validateOutputFlags(cmd *cobra.Command, opts cmdutil.Options) error {
 	}
 
 	return cmdutil.NewUsageError(cmd, message)
+}
+
+func validateSafeJSONFlag(cmd *cobra.Command, opts cmdutil.Options) error {
+	if opts.SafeJSON && !opts.JSONOutput {
+		return cmdutil.NewUsageError(cmd, "--safe-json requires --json")
+	}
+	return nil
 }
 
 func plainOutputConflictMessage(opts cmdutil.Options) string {
