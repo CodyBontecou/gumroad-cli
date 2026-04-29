@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/antiwork/gumroad-cli/internal/adminapi"
 	"github.com/antiwork/gumroad-cli/internal/admincmd"
@@ -136,7 +137,7 @@ func renderReassign(opts cmdutil.Options, from, to string, resp reassignResponse
 		}
 	}
 	if len(resp.ReassignedPurchaseIDs) > 0 {
-		return output.Writef(opts.Out(), "Purchase IDs: %v\n", resp.ReassignedPurchaseIDs)
+		return output.Writef(opts.Out(), "Purchase IDs: %s\n", strings.Join(resp.ReassignedPurchaseIDs, ", "))
 	}
 	return nil
 }

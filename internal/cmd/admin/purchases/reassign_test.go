@@ -84,6 +84,12 @@ func TestReassign_PostsBothEmails(t *testing.T) {
 	if !strings.Contains(out, "Reassigned: 4 purchase(s)") {
 		t.Errorf("expected count line in output: %q", out)
 	}
+	if !strings.Contains(out, "Purchase IDs: 1, 2, 3, 4") {
+		t.Errorf("expected comma-separated purchase IDs (matches repo convention via strings.Join), got: %q", out)
+	}
+	if strings.Contains(out, "Purchase IDs: [1 2 3 4]") {
+		t.Errorf("purchase IDs must not render as Go slice debug syntax, got: %q", out)
+	}
 }
 
 func TestReassign_DryRunDoesNotPost(t *testing.T) {
