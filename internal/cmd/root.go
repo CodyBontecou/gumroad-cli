@@ -57,13 +57,6 @@ func NewRootCmd() *cobra.Command {
   echo "$LICENSE_KEY" | gumroad licenses verify --product <id> --no-increment`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(c *cobra.Command, args []string) error {
-			o := cmdutil.OptionsFrom(c)
-			if !o.InteractiveTUIAllowed() {
-				return c.Help()
-			}
-			return sales.RunDefaultList(o)
-		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			ctx := commandContext(cmd)
 			opts.Context = ctx

@@ -89,12 +89,6 @@ func newListCmd() *cobra.Command {
 	return cmd
 }
 
-func RunDefaultList(opts cmdutil.Options) error {
-	return cmdutil.RunRequestDecoded[salesListResponse](opts, "Fetching sales...", "GET", "/sales", url.Values{}, func(resp salesListResponse) error {
-		return renderSalesList(opts, resp, "", "", "", "", "")
-	})
-}
-
 func renderSalesList(opts cmdutil.Options, resp salesListResponse, product, email, orderID, before, after string) error {
 	if len(resp.Sales) == 0 {
 		return renderEmptySalesList(opts, product, email, orderID, before, after, resp.NextPageKey)
