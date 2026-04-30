@@ -199,9 +199,7 @@ func (c *Client) doPreparedWithContext(
 			return nil, fmt.Errorf("could not create request: %w", err)
 		}
 
-		if c.token != "" {
-			req.Header.Set("Authorization", "Bearer "+c.token)
-		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("User-Agent", "gumroad-cli/"+c.version)
 		if contentType != "" {
 			req.Header.Set("Content-Type", contentType)
