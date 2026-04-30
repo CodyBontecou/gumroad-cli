@@ -18,6 +18,7 @@ type Table struct {
 }
 
 var ansiSequencePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var numericCellPattern = regexp.MustCompile(`^-?\$?\d[\d,]*(\.\d+)?%?$`)
 
 const (
 	defaultTableWidth       = 120
@@ -25,6 +26,7 @@ const (
 	maxHeaderMinimumWidth   = 16
 	tableColumnSeparator    = "  "
 	tableTruncationEllipsis = "…"
+	tableSeparatorRune      = "─"
 )
 
 func NewTable(headers ...string) *Table {
@@ -81,6 +83,8 @@ func (t *Table) Render(w io.Writer) error {
 	if t.styled {
 		styler = t.styler
 	}
+	theme := NewTheme(styler.Enabled())
+	rightAlign := detectNumericColumns(t.rows, len(widths))
 
 	// Header
 	for i, h := range t.headers {
@@ -89,7 +93,26 @@ func (t *Table) Render(w io.Writer) error {
 				return err
 			}
 		}
-		if _, err := fmt.Fprint(w, styler.Bold(fitCell(h, widths[i]))); err != nil {
+		if _, err := fmt.Fprint(w, styler.Bold(fitCellAligned(h, widths[i], false))); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+
+	// Subtle separator line under the header.
+	for i, width := range widths {
+		if i > 0 {
+			if _, err := fmt.Fprint(w, tableColumnSeparator); err != nil {
+				return err
+			}
+		}
+		seg := strings.Repeat(tableSeparatorRune, width)
+		if styler.Enabled() {
+			seg = theme.Muted(seg)
+		}
+		if _, err := fmt.Fprint(w, seg); err != nil {
 			return err
 		}
 	}
@@ -108,7 +131,7 @@ func (t *Table) Render(w io.Writer) error {
 					return err
 				}
 			}
-			if _, err := fmt.Fprint(w, fitCell(cell, widths[i])); err != nil {
+			if _, err := fmt.Fprint(w, fitCellAligned(cell, widths[i], rightAlign[i])); err != nil {
 				return err
 			}
 		}
@@ -117,6 +140,30 @@ func (t *Table) Render(w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func detectNumericColumns(rows [][]string, columns int) []bool {
+	right := make([]bool, columns)
+	for col := 0; col < columns; col++ {
+		hasValue := false
+		allNumeric := true
+		for _, row := range rows {
+			if col >= len(row) {
+				continue
+			}
+			cell := strings.TrimSpace(stripANSI(row[col]))
+			if cell == "" || cell == "-" {
+				continue
+			}
+			hasValue = true
+			if !numericCellPattern.MatchString(cell) {
+				allNumeric = false
+				break
+			}
+		}
+		right[col] = hasValue && allNumeric
+	}
+	return right
 }
 
 func clampTableWidths(headers []string, widths []int, maxWidth int) []int {
@@ -168,6 +215,10 @@ func stripANSI(s string) string {
 }
 
 func fitCell(s string, width int) string {
+	return fitCellAligned(s, width, false)
+}
+
+func fitCellAligned(s string, width int, right bool) string {
 	if width <= 0 {
 		return ""
 	}
@@ -177,7 +228,11 @@ func fitCell(s string, width int) string {
 	if currentWidth >= width {
 		return value
 	}
-	return value + strings.Repeat(" ", width-currentWidth)
+	pad := strings.Repeat(" ", width-currentWidth)
+	if right {
+		return pad + value
+	}
+	return value + pad
 }
 
 func truncateCell(s string, width int) string {

@@ -213,9 +213,9 @@ func renderRefund(opts cmdutil.Options, purchaseID string, resp refundResponse) 
 		return nil
 	}
 
-	style := opts.Style()
+	theme := opts.Theme()
 	headline := fallback(resp.Message, "Refunded purchase "+purchaseID)
-	if err := output.Writeln(opts.Out(), style.Green(headline)); err != nil {
+	if err := theme.PrintStatus(opts.Out(), output.StatusOK, headline); err != nil {
 		return err
 	}
 
@@ -226,10 +226,10 @@ func renderRefund(opts cmdutil.Options, purchaseID string, resp refundResponse) 
 	}
 
 	if resp.SubscriptionCancelled {
-		return output.Writeln(opts.Out(), "Subscription: cancelled")
+		return theme.PrintStatus(opts.Out(), output.StatusOK, "Subscription: cancelled")
 	}
 	if resp.SubscriptionCancelError != "" {
-		return output.Writef(opts.Out(), "Subscription cancel failed: %s\n", resp.SubscriptionCancelError)
+		return theme.PrintStatus(opts.Out(), output.StatusErr, "Subscription cancel failed: "+resp.SubscriptionCancelError)
 	}
 	return nil
 }

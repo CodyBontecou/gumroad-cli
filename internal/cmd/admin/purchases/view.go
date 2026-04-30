@@ -75,7 +75,6 @@ func renderPurchase(opts cmdutil.Options, p purchase) error {
 		})
 	}
 
-	style := opts.Style()
 	headlineFromID := false
 	headline := product
 	if headline == "" {
@@ -85,36 +84,27 @@ func renderPurchase(opts cmdutil.Options, p purchase) error {
 	if amount != "" {
 		headline += "  " + amount
 	}
-	if err := output.Writeln(opts.Out(), style.Bold(headline)); err != nil {
-		return err
-	}
+
+	rows := make([][2]string, 0, 6)
 	if !headlineFromID {
-		if err := output.Writef(opts.Out(), "Purchase ID: %s\n", p.ID); err != nil {
-			return err
-		}
+		rows = append(rows, [2]string{"Purchase ID", p.ID})
 	}
 	if p.Email != "" {
-		if err := output.Writef(opts.Out(), "Buyer: %s\n", p.Email); err != nil {
-			return err
-		}
+		rows = append(rows, [2]string{"Buyer", p.Email})
 	}
 	if p.SellerEmail != "" {
-		if err := output.Writef(opts.Out(), "Seller: %s\n", p.SellerEmail); err != nil {
-			return err
-		}
+		rows = append(rows, [2]string{"Seller", p.SellerEmail})
 	}
 	if status != "" {
-		if err := output.Writef(opts.Out(), "Status: %s\n", status); err != nil {
-			return err
-		}
+		rows = append(rows, [2]string{"Status", status})
 	}
 	if p.CreatedAt != "" {
-		if err := output.Writef(opts.Out(), "Date: %s\n", p.CreatedAt); err != nil {
-			return err
-		}
+		rows = append(rows, [2]string{"Date", p.CreatedAt})
 	}
 	if p.ReceiptURL != "" {
-		return output.Writef(opts.Out(), "Receipt: %s\n", p.ReceiptURL)
+		rows = append(rows, [2]string{"Receipt", p.ReceiptURL})
 	}
-	return nil
+
+	theme := opts.Theme()
+	return theme.PrintCard(opts.Out(), headline, rows)
 }

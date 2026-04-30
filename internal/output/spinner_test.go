@@ -1,10 +1,32 @@
 package output
 
 import (
+	"bytes"
 	"io"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+type concurrentBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *concurrentBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *concurrentBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
 func TestSpinner_NonTTY_DoesNotActivate(t *testing.T) {
 	orig := isSpinnerTerminal
@@ -162,6 +184,57 @@ func TestSpinner_SetMessage_BeforeStartAndAfterStop(t *testing.T) {
 	if got != "after-stop" {
 		t.Errorf("message = %q, want %q", got, "after-stop")
 	}
+}
+
+func TestSpinner_StopOKAndStopError_PrintFinalLine(t *testing.T) {
+	t.Run("StopOK on TTY prints success status", func(t *testing.T) {
+		orig := isSpinnerTerminal
+		isSpinnerTerminal = func(io.Writer) bool { return true }
+		defer func() { isSpinnerTerminal = orig }()
+		t.Setenv("TERM", "xterm-256color")
+
+		buf := &concurrentBuffer{}
+		s := NewSpinnerTo("loading", buf)
+		s.Start()
+		time.Sleep(10 * time.Millisecond)
+		s.StopOK("done")
+
+		out := buf.String()
+		if !contains(out, "done") {
+			t.Fatalf("expected final message: %q", out)
+		}
+	})
+
+	t.Run("StopError on TTY prints error status", func(t *testing.T) {
+		orig := isSpinnerTerminal
+		isSpinnerTerminal = func(io.Writer) bool { return true }
+		defer func() { isSpinnerTerminal = orig }()
+		t.Setenv("TERM", "xterm-256color")
+
+		buf := &concurrentBuffer{}
+		s := NewSpinnerTo("loading", buf)
+		s.Start()
+		time.Sleep(10 * time.Millisecond)
+		s.StopError("nope")
+
+		if !contains(buf.String(), "nope") {
+			t.Fatalf("expected final error message: %q", buf.String())
+		}
+	})
+
+	t.Run("StopOK without start still prints fallback message", func(t *testing.T) {
+		orig := isSpinnerTerminal
+		isSpinnerTerminal = func(io.Writer) bool { return false }
+		defer func() { isSpinnerTerminal = orig }()
+
+		buf := &concurrentBuffer{}
+		s := NewSpinnerTo("loading", buf)
+		s.StopOK("ok")
+
+		if !contains(buf.String(), "ok") {
+			t.Fatalf("expected fallback final message on non-TTY: %q", buf.String())
+		}
+	})
 }
 
 func TestSpinner_SetMessage_ConcurrentRenders(t *testing.T) {

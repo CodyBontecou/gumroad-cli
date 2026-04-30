@@ -32,6 +32,15 @@ func IsTTY() bool {
 	return stdoutIsTerminal()
 }
 
+// IsFileTerminal reports whether the given *os.File is a terminal. Wrapper
+// around golang.org/x/term so other packages don't need to depend on it.
+func IsFileTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
+
 func NewStyler(noColor bool) Styler {
 	return NewStylerForWriter(os.Stdout, noColor)
 }

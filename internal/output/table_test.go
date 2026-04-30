@@ -37,8 +37,8 @@ func TestTable_Render(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines (header + 2 rows), got %d: %q", len(lines), buf.String())
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (header + separator + 2 rows), got %d: %q", len(lines), buf.String())
 	}
 
 	// Header should have both column names
@@ -46,12 +46,17 @@ func TestTable_Render(t *testing.T) {
 		t.Errorf("header missing columns: %q", lines[0])
 	}
 
-	// Data rows
-	if !strings.Contains(lines[1], "1") || !strings.Contains(lines[1], "Alpha") {
-		t.Errorf("row 1 missing data: %q", lines[1])
+	// Separator line should consist of only the separator rune and column gaps.
+	if !strings.Contains(lines[1], tableSeparatorRune) {
+		t.Errorf("expected separator line under header, got %q", lines[1])
 	}
-	if !strings.Contains(lines[2], "22") || !strings.Contains(lines[2], "Beta") {
-		t.Errorf("row 2 missing data: %q", lines[2])
+
+	// Data rows
+	if !strings.Contains(lines[2], "1") || !strings.Contains(lines[2], "Alpha") {
+		t.Errorf("row 1 missing data: %q", lines[2])
+	}
+	if !strings.Contains(lines[3], "22") || !strings.Contains(lines[3], "Beta") {
+		t.Errorf("row 2 missing data: %q", lines[3])
 	}
 }
 
@@ -85,14 +90,20 @@ func TestTable_AlignmentWithANSIColor(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d: %q", len(lines), buf.String())
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d: %q", len(lines), buf.String())
 	}
 
 	header := stripANSI(lines[0])
-	row := stripANSI(lines[1])
-	if strings.Index(header, "PRICE") != strings.Index(row, "$10") {
-		t.Fatalf("expected PRICE and $10 to share a column start:\nheader: %q\nrow:    %q", header, row)
+	row := stripANSI(lines[2])
+	priceCol := strings.Index(header, "PRICE")
+	rowEnd := strings.LastIndex(row, "$10") + len("$10")
+	headerEnd := strings.LastIndex(header, "PRICE") + len("PRICE")
+	if priceCol < 0 || rowEnd <= 0 {
+		t.Fatalf("expected PRICE and $10 to be in output:\nheader: %q\nrow:    %q", header, row)
+	}
+	if rowEnd != headerEnd {
+		t.Fatalf("expected PRICE and $10 to share a column end (right-aligned):\nheader: %q\nrow:    %q", header, row)
 	}
 }
 
@@ -119,12 +130,12 @@ func TestTable_AlignmentWithWideCharacters(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d: %q", len(lines), buf.String())
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d: %q", len(lines), buf.String())
 	}
 
 	header := stripANSI(lines[0])
-	row := stripANSI(lines[1])
+	row := stripANSI(lines[2])
 	headerStart := strings.Index(header, "STATUS")
 	rowStart := strings.Index(row, "ok")
 	if headerStart < 0 || rowStart < 0 {
@@ -162,8 +173,8 @@ func TestTable_SingleColumn(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (header + separator + 2 rows), got %d", len(lines))
 	}
 }
 

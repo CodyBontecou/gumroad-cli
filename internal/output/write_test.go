@@ -137,11 +137,11 @@ func TestTable_RenderShortRow(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d: %q", len(lines), buf.String())
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines (header + separator + row), got %d: %q", len(lines), buf.String())
 	}
-	if !strings.Contains(lines[1], "value") {
-		t.Fatalf("expected row to include first cell, got %q", lines[1])
+	if !strings.Contains(lines[2], "value") {
+		t.Fatalf("expected row to include first cell, got %q", lines[2])
 	}
 }
 
