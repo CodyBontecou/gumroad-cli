@@ -45,7 +45,7 @@ func TestModel_NavigationKeys(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(Model)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown}) // hits clamp
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(Model)
 	if m.cursor != 2 {
 		t.Fatalf("down clamp: cursor = %d, want 2", m.cursor)
@@ -102,7 +102,7 @@ func TestModel_TimeFilterCyclesAndClears(t *testing.T) {
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.timeFilter != filterAll {
-		t.Fatalf("esc should reset to filterAll, got %v", m.timeFilter)
+		t.Fatalf("esc must reset to filterAll, got %v", m.timeFilter)
 	}
 }
 
@@ -141,7 +141,7 @@ func TestModel_RevealStopsAtMaxAndIgnoresFurtherTicks(t *testing.T) {
 		m = updated.(Model)
 	}
 	if m.revealing {
-		t.Fatal("reveal should stop after sparklineWidth ticks")
+		t.Fatal("reveal must stop after sparklineWidth ticks")
 	}
 	updated, cmd := m.Update(revealMsg{})
 	m = updated.(Model)
@@ -228,17 +228,17 @@ func TestFormatThousands(t *testing.T) {
 }
 
 func TestParseSaleTime(t *testing.T) {
-	if parseSaleTime("").IsZero() == false {
-		t.Fatal("empty should be zero")
+	if !parseSaleTime("").IsZero() {
+		t.Fatal("empty input must yield zero time")
 	}
-	if parseSaleTime("not a date").IsZero() == false {
-		t.Fatal("garbage should be zero")
+	if !parseSaleTime("not a date").IsZero() {
+		t.Fatal("unparseable input must yield zero time")
 	}
 	if t1 := parseSaleTime("2026-04-29T12:00:00Z"); t1.IsZero() {
-		t.Fatal("RFC3339 should parse")
+		t.Fatal("RFC3339 must parse")
 	}
 	if t1 := parseSaleTime("2026-04-29"); t1.IsZero() {
-		t.Fatal("date-only should parse")
+		t.Fatal("date-only must parse")
 	}
 }
 
@@ -263,11 +263,11 @@ func TestShortIDAndFitting(t *testing.T) {
 func TestRenderSparklineEmptyAndPopulated(t *testing.T) {
 	m := NewModel(nil)
 	if got := m.renderSparkline(8); !strings.Contains(got, "·") {
-		t.Fatalf("empty sparkline should be dots, got %q", got)
+		t.Fatalf("empty sparkline must be dots, got %q", got)
 	}
 
 	m = NewModel(sampleSales())
 	if got := m.renderSparkline(16); got == "" {
-		t.Fatal("populated sparkline should not be empty")
+		t.Fatal("populated sparkline must not be empty")
 	}
 }

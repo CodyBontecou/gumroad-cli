@@ -89,9 +89,6 @@ func newListCmd() *cobra.Command {
 	return cmd
 }
 
-// RunDefaultList runs the equivalent of `gumroad sales list` with all flags
-// at their zero values. Other commands (notably the root command's no-args
-// path) delegate here so the TUI/non-TUI fork stays in one place.
 func RunDefaultList(opts cmdutil.Options) error {
 	return cmdutil.RunRequestDecoded[salesListResponse](opts, "Fetching sales...", "GET", "/sales", url.Values{}, func(resp salesListResponse) error {
 		return renderSalesList(opts, resp, "", "", "", "", "")

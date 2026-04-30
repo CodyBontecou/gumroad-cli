@@ -12,13 +12,12 @@ const (
 	colorAccent  = "#FF90E8"
 	colorAccent2 = "#FFC9F0"
 	colorSuccess = "#00C896"
-	colorWarning = "#FFC23C"
 	colorError   = "#FF5A5F"
 	colorInfo    = "#5B8DEF"
 	colorMuted   = "#8B8D98"
 	colorBorder  = "#3A3A42"
 	colorSoft    = "#C7C9D1"
-	colorBgPanel = "#16161A"
+	colorPillFG  = "#0E0E11"
 )
 
 const (
@@ -26,6 +25,15 @@ const (
 	defaultRowsShown = 12
 	minWidth         = 80
 	minHeight        = 24
+
+	panelHorizontalPadding = 4
+	tableIDWidth           = 12
+	tableTotalWidth        = 9
+	tableDateWidth         = 12
+	tableGutter            = 2
+	tableGutterCount       = 4
+	tableMinFlexibleWidth  = 20
+	rowsReservedForChrome  = 18
 )
 
 var sparkRunes = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
@@ -43,12 +51,12 @@ var (
 	styleInfo       = lipgloss.NewStyle().Foreground(lipgloss.Color(colorInfo))
 	styleHeaderRow  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Bold(true)
 	stylePill       = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#0E0E11")).
+			Foreground(lipgloss.Color(colorPillFG)).
 			Background(lipgloss.Color(colorAccent)).
 			Bold(true).
 			Padding(0, 1)
 	styleCursorRow = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#0E0E11")).
+			Foreground(lipgloss.Color(colorPillFG)).
 			Background(lipgloss.Color(colorAccent2)).
 			Bold(true)
 	styleRefunded = lipgloss.NewStyle().
@@ -58,13 +66,12 @@ var (
 	styleHelpDesc = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 )
 
-// View implements tea.Model.
 func (m Model) View() string {
 	width := m.width
 	if width < minWidth {
 		width = minWidth
 	}
-	innerWidth := width - 4 // account for outer padding
+	innerWidth := width - panelHorizontalPadding
 
 	header := m.renderHeader(innerWidth)
 	controls := m.renderControls(innerWidth)
@@ -122,35 +129,31 @@ func (m Model) renderTable(innerWidth int) string {
 		return stylePanel.Width(innerWidth).Render(styleMuted.Render("  no sales match the current filter"))
 	}
 
-	idW := 12
-	totalW := 9
-	dateW := 12
-	gutter := 2
-	flexible := innerWidth - 4 - idW - totalW - dateW - 4*gutter
-	if flexible < 20 {
-		flexible = 20
+	flexible := innerWidth - panelHorizontalPadding - tableIDWidth - tableTotalWidth - tableDateWidth - tableGutterCount*tableGutter
+	if flexible < tableMinFlexibleWidth {
+		flexible = tableMinFlexibleWidth
 	}
 	emailW := flexible / 2
 	productW := flexible - emailW
 
 	header := styleHeaderRow.Render(
-		fitLeft("ID", idW) + spacer() +
+		fitLeft("ID", tableIDWidth) + spacer() +
 			fitLeft("BUYER", emailW) + spacer() +
 			fitLeft("PRODUCT", productW) + spacer() +
-			fitRight("TOTAL", totalW) + spacer() +
-			fitLeft("DATE", dateW),
+			fitRight("TOTAL", tableTotalWidth) + spacer() +
+			fitLeft("DATE", tableDateWidth),
 	)
 	sep := styleMuted.Render(
-		strings.Repeat("─", idW) + spacer() +
+		strings.Repeat("─", tableIDWidth) + spacer() +
 			strings.Repeat("─", emailW) + spacer() +
 			strings.Repeat("─", productW) + spacer() +
-			strings.Repeat("─", totalW) + spacer() +
-			strings.Repeat("─", dateW),
+			strings.Repeat("─", tableTotalWidth) + spacer() +
+			strings.Repeat("─", tableDateWidth),
 	)
 
 	rowsToShow := defaultRowsShown
 	if m.height > minHeight {
-		rowsToShow = max(rowsToShow, m.height-18)
+		rowsToShow = max(rowsToShow, m.height-rowsReservedForChrome)
 	}
 	start := 0
 	if m.cursor >= rowsToShow {
@@ -165,15 +168,15 @@ func (m Model) renderTable(innerWidth int) string {
 	for i := start; i < end; i++ {
 		idx := m.filtered[i]
 		s := m.sales[idx]
-		idCell := fitLeft(shortID(s.ID), idW)
+		idCell := fitLeft(shortID(s.ID), tableIDWidth)
 		emailCell := fitLeft(s.Email, emailW)
 		productLabel := s.Product
 		if s.Refunded {
 			productLabel = s.Product + " ↩"
 		}
 		productCell := fitLeft(productLabel, productW)
-		totalCell := fitRight(s.FormattedCost, totalW)
-		dateCell := fitLeft(humanDate(s.createdTime, s.CreatedAt), dateW)
+		totalCell := fitRight(s.FormattedCost, tableTotalWidth)
+		dateCell := fitLeft(humanDate(s.createdTime, s.CreatedAt), tableDateWidth)
 
 		row := idCell + spacer() + emailCell + spacer() + productCell + spacer() + totalCell + spacer() + dateCell
 
@@ -261,15 +264,11 @@ func (m Model) renderFooter(innerWidth int) string {
 	return "  " + hint + gap + notice
 }
 
-// renderSparkline buckets sales-per-bucket across the loaded date range and
-// renders an ascending block sparkline. The reveal animation grows the visible
-// width on each tick during model startup.
 func (m Model) renderSparkline(width int) string {
 	if width <= 0 || len(m.sales) == 0 {
 		return styleMuted.Render(strings.Repeat("·", width))
 	}
 
-	// Bucket counts.
 	earliest := m.sales[0].createdTime
 	latest := earliest
 	for _, s := range m.sales {
@@ -284,7 +283,7 @@ func (m Model) renderSparkline(width int) string {
 		}
 	}
 	if earliest.IsZero() || latest.Equal(earliest) {
-		latest = earliest.Add(24 * time.Hour)
+		latest = earliest.Add(hoursPerDay * time.Hour)
 	}
 	span := latest.Sub(earliest)
 	if span <= 0 {
@@ -356,22 +355,24 @@ func windowDescription(sales []Sale) string {
 		return ""
 	}
 	span := latest.Sub(earliest)
+	day := time.Duration(hoursPerDay) * time.Hour
+	week := time.Duration(daysPerWeek*hoursPerDay) * time.Hour
 	switch {
-	case span < 24*time.Hour:
+	case span < day:
 		return "today"
-	case span < 7*24*time.Hour:
-		return fmt.Sprintf("over %d days", int(span.Hours()/24)+1)
+	case span < week:
+		return fmt.Sprintf("over %d days", int(span.Hours()/hoursPerDay)+1)
 	default:
-		return fmt.Sprintf("over %d days", int(span.Hours()/24))
+		return fmt.Sprintf("over %d days", int(span.Hours()/hoursPerDay))
 	}
 }
 
 func shortID(id string) string {
-	const max = 11
-	if len(id) <= max {
+	const maxLen = 11
+	if len(id) <= maxLen {
 		return id
 	}
-	return id[:max-1] + "…"
+	return id[:maxLen-1] + "…"
 }
 
 func humanDate(t time.Time, fallback string) string {
@@ -426,7 +427,7 @@ func padRight(s string, w int) string {
 func spacer() string { return "  " }
 
 func padGap(width, leftW, rightW int) int {
-	gap := width - leftW - rightW - 4 // 4 = panel padding (2 each side)
+	gap := width - leftW - rightW - panelHorizontalPadding
 	if gap < 1 {
 		gap = 1
 	}

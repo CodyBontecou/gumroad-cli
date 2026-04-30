@@ -8,9 +8,6 @@ import (
 	"github.com/antiwork/gumroad-cli/internal/output"
 )
 
-// fakeTTY makes the gate believe stdin is a real terminal-backed *os.File.
-// We reuse os.Stdout (always a *os.File) and override the package-level hook
-// to return true.
 func withFakeTTYBoth(t *testing.T) {
 	t.Helper()
 	output.SetStdoutIsTerminalForTesting(true)
@@ -185,6 +182,6 @@ func TestInteractiveTUIAllowed_BlocksOnGumroadTUIZero(t *testing.T) {
 
 func TestStdinIsTerminal_NonFileReturnsFalse(t *testing.T) {
 	if stdinIsTerminal(io.NopCloser(nil)) {
-		t.Fatal("non-file reader should not register as a terminal")
+		t.Fatal("non-file reader must not register as a terminal")
 	}
 }

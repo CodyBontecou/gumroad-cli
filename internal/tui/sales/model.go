@@ -1,9 +1,3 @@
-// Package sales hosts the bubbletea-based interactive sales browser.
-//
-// The TUI is purely a presentation layer over the same []Sale items the
-// non-TUI code path produces. Commands MUST gate the call to Run with
-// cmdutil.Options.InteractiveTUIAllowed() so JSON/plain/scripted invocations
-// never enter this package.
 package sales
 
 import (
@@ -15,11 +9,16 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
-// Sale is the projection of a sales record the TUI renders. Callers translate
-// their wire types into this so the TUI stays decoupled from the API layer.
+const (
+	hoursPerDay          = 24
+	daysPerWeek          = 7
+	daysPerMonth         = 30
+	revealTickInterval   = 35 * time.Millisecond
+	searchInputCharLimit = 80
+)
+
 type Sale struct {
 	ID            string
 	Email         string
@@ -30,7 +29,6 @@ type Sale struct {
 	createdTime   time.Time
 }
 
-// timeFilter narrows the visible window. Cycled with `t`.
 type timeFilter int
 
 const (
@@ -38,6 +36,7 @@ const (
 	filterToday
 	filterWeek
 	filterMonth
+	timeFilterCount
 )
 
 func (f timeFilter) label() string {
@@ -58,9 +57,9 @@ func (f timeFilter) cutoff(now time.Time) (time.Time, bool) {
 	case filterToday:
 		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()), true
 	case filterWeek:
-		return now.Add(-7 * 24 * time.Hour), true
+		return now.Add(-daysPerWeek * hoursPerDay * time.Hour), true
 	case filterMonth:
-		return now.Add(-30 * 24 * time.Hour), true
+		return now.Add(-daysPerMonth * hoursPerDay * time.Hour), true
 	default:
 		return time.Time{}, false
 	}
@@ -92,8 +91,6 @@ func defaultKeymap() keymap {
 	}
 }
 
-// Model is the bubbletea model for the sales browser. It is exported only so
-// tests can drive it; consumers should call Run.
 type Model struct {
 	sales       []Sale
 	filtered    []int
@@ -111,13 +108,11 @@ type Model struct {
 	notice      string
 }
 
-// NewModel constructs the TUI model from a slice of sales. The TUI renders the
-// sales it's given; pagination is the caller's responsibility.
 func NewModel(sales []Sale) Model {
 	ti := textinput.New()
 	ti.Placeholder = "filter by email or product"
 	ti.Prompt = ""
-	ti.CharLimit = 80
+	ti.CharLimit = searchInputCharLimit
 
 	for i := range sales {
 		sales[i].createdTime = parseSaleTime(sales[i].CreatedAt)
@@ -136,19 +131,16 @@ func NewModel(sales []Sale) Model {
 	return m
 }
 
-// Init starts the entrance animation: the sparkline and totals reveal one
-// column at a time.
 func (m Model) Init() tea.Cmd {
 	return revealTick()
 }
 
 func revealTick() tea.Cmd {
-	return tea.Tick(35*time.Millisecond, func(t time.Time) tea.Msg { return revealMsg{} })
+	return tea.Tick(revealTickInterval, func(t time.Time) tea.Msg { return revealMsg{} })
 }
 
 type revealMsg struct{}
 
-// Update implements tea.Model. It is exported because tests drive it directly.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -212,7 +204,7 @@ func (m Model) updateBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.search.Focus()
 		return m, textinput.Blink
 	case key.Matches(msg, m.keys.Time):
-		m.timeFilter = (m.timeFilter + 1) % 4
+		m.timeFilter = (m.timeFilter + 1) % timeFilterCount
 		m.applyFilters()
 		if m.cursor >= len(m.filtered) {
 			m.cursor = max(0, len(m.filtered)-1)
@@ -234,7 +226,6 @@ func (m Model) updateBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// SelectedSale returns the sale at the cursor, or zero value if no rows.
 func (m Model) SelectedSale() (Sale, bool) {
 	if len(m.filtered) == 0 {
 		return Sale{}, false
@@ -288,9 +279,6 @@ func sortSalesNewestFirst(sales []Sale) {
 	})
 }
 
-// totalRevenue parses the FormattedCost strings ($X.YY) and returns a summed
-// display string. It quietly ignores entries it cannot parse so a single
-// weird locale or missing value doesn't break the header.
 func (m Model) totalRevenue() (string, int) {
 	var sum float64
 	count := 0
@@ -332,6 +320,7 @@ func parseDollarAmount(s string) (float64, bool) {
 }
 
 func formatThousands(v float64) string {
+	const groupSize = 3
 	s := fmt.Sprintf("%.2f", v)
 	dot := strings.Index(s, ".")
 	intPart := s[:dot]
@@ -342,7 +331,7 @@ func formatThousands(v float64) string {
 	}
 	var b strings.Builder
 	for i, r := range intPart {
-		if i > 0 && (len(intPart)-i)%3 == 0 {
+		if i > 0 && (len(intPart)-i)%groupSize == 0 {
 			b.WriteByte(',')
 		}
 		b.WriteRune(r)
@@ -352,13 +341,3 @@ func formatThousands(v float64) string {
 	}
 	return b.String() + decPart
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// Sentinel exposed so tests can assert lipgloss is in fact rendering colors.
-var _ lipgloss.TerminalColor = lipgloss.Color("#000000")
