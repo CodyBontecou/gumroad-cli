@@ -18,17 +18,23 @@ const (
 	maxLimit       = 500
 	maxNameWidth   = 50
 	centsPerDollar = 100
+	minRating      = 1
+	maxRating      = 5
 	searchPath     = "/products/search.json"
 )
 
 var allowedSorts = []string{
 	"default",
+	"best_sellers",
+	"curated",
+	"hot_and_new",
+	"newest",
 	"price_asc",
 	"price_desc",
-	"hot_and_new",
 	"most_reviewed",
 	"highest_rated",
-	"curated",
+	"recently_updated",
+	"staff_picked",
 }
 
 type searchProduct struct {
@@ -70,23 +76,44 @@ type searchResponse struct {
 
 func newSearchCmd() *cobra.Command {
 	var (
-		tag      string
-		minPrice int
-		maxPrice int
-		sort     string
-		limit    int
-		from     int
+		tag          string
+		taxonomy     string
+		filetypes    string
+		minPrice     int
+		maxPrice     int
+		rating       int
+		minReviews   int
+		staffPicked  bool
+		subscription bool
+		bundle       bool
+		call         bool
+		excludeIDs   string
+		sort         string
+		limit        int
+		from         int
 	)
 
 	cmd := &cobra.Command{
 		Use:   "search [query]",
 		Short: "Search public Gumroad products",
 		Long: `Search the public Gumroad catalog. The query is optional — omit it to browse
-trending picks. Filters and sort match the gumroad.com/discover surface.`,
+trending picks. All filters listed below are forwarded to the same discover
+index that powers gumroad.com/discover.
+
+The query searches across product name, seller name, description, and tags
+using an AND operator. Inline operators are supported: +required, -excluded,
+"exact phrase", and wild* prefixes.
+
+The --subscription, --bundle, --call, and --staff-picked flags are tri-state
+booleans. Unset means "no filter" (mixed results); --flag (or --flag=true)
+restricts results to that type; --flag=false excludes that type entirely.`,
 		Example: `  gumroad discover search "machine learning"
   gumroad discover search --tag font --sort price_asc --limit 50
-  gumroad discover search "design" --max-price 25 --json
-  gumroad discover search --tag productivity --plain`,
+  gumroad discover search "design" --max-price 25 --rating 4 --json
+  gumroad discover search --taxonomy 3d/games --staff-picked
+  gumroad discover search --filetypes pdf,epub --min-reviews 10
+  gumroad discover search --subscription --sort best_sellers
+  gumroad discover search --tag productivity,writing --plain`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
@@ -109,6 +136,12 @@ trending picks. Filters and sort match the gumroad.com/discover surface.`,
 			if maxPrice > 0 && minPrice > maxPrice {
 				return cmdutil.NewUsageError(c, "--min-price cannot exceed --max-price")
 			}
+			if c.Flags().Changed("rating") && (rating < minRating || rating > maxRating) {
+				return cmdutil.NewUsageError(c, fmt.Sprintf("--rating must be between %d and %d", minRating, maxRating))
+			}
+			if minReviews < 0 {
+				return cmdutil.NewUsageError(c, "--min-reviews must not be negative")
+			}
 
 			params := url.Values{}
 			if len(args) == 1 && args[0] != "" {
@@ -117,11 +150,38 @@ trending picks. Filters and sort match the gumroad.com/discover surface.`,
 			if tag != "" {
 				params.Set("tags", tag)
 			}
+			if taxonomy != "" {
+				params.Set("taxonomy", taxonomy)
+			}
+			if filetypes != "" {
+				params.Set("filetypes", filetypes)
+			}
 			if minPrice > 0 {
 				params.Set("min_price", strconv.Itoa(minPrice))
 			}
 			if maxPrice > 0 {
 				params.Set("max_price", strconv.Itoa(maxPrice))
+			}
+			if c.Flags().Changed("rating") {
+				params.Set("rating", strconv.Itoa(rating))
+			}
+			if minReviews > 0 {
+				params.Set("min_reviews_count", strconv.Itoa(minReviews))
+			}
+			if staffPicked {
+				params.Set("staff_picked", "true")
+			}
+			if c.Flags().Changed("subscription") {
+				params.Set("is_subscription", strconv.FormatBool(subscription))
+			}
+			if c.Flags().Changed("bundle") {
+				params.Set("is_bundle", strconv.FormatBool(bundle))
+			}
+			if c.Flags().Changed("call") {
+				params.Set("is_call", strconv.FormatBool(call))
+			}
+			if excludeIDs != "" {
+				params.Set("exclude_ids", excludeIDs)
 			}
 			if sort != "default" {
 				params.Set("sort", sort)
@@ -163,9 +223,18 @@ trending picks. Filters and sort match the gumroad.com/discover surface.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&tag, "tag", "", "Filter by tag (e.g. design, productivity)")
+	cmd.Flags().StringVar(&tag, "tag", "", "Filter by tag(s); comma-separated for multiple (e.g. design,productivity)")
+	cmd.Flags().StringVar(&taxonomy, "taxonomy", "", "Filter by category slug path (e.g. 3d/games, design/illustration)")
+	cmd.Flags().StringVar(&filetypes, "filetypes", "", "Filter by file type(s); comma-separated (e.g. pdf,epub,zip)")
 	cmd.Flags().IntVar(&minPrice, "min-price", 0, "Minimum price in dollars")
 	cmd.Flags().IntVar(&maxPrice, "max-price", 0, "Maximum price in dollars")
+	cmd.Flags().IntVar(&rating, "rating", 0, "Minimum average rating (1–5)")
+	cmd.Flags().IntVar(&minReviews, "min-reviews", 0, "Minimum number of reviews")
+	cmd.Flags().BoolVar(&staffPicked, "staff-picked", false, "Only staff-picked products")
+	cmd.Flags().BoolVar(&subscription, "subscription", false, "Only subscriptions (use --subscription=false to exclude)")
+	cmd.Flags().BoolVar(&bundle, "bundle", false, "Only bundles (use --bundle=false to exclude)")
+	cmd.Flags().BoolVar(&call, "call", false, "Only calls/consultations (use --call=false to exclude)")
+	cmd.Flags().StringVar(&excludeIDs, "exclude-ids", "", "Exclude product IDs; comma-separated")
 	cmd.Flags().StringVar(&sort, "sort", "default", "Sort order: "+strings.Join(allowedSorts, ", "))
 	cmd.Flags().IntVar(&limit, "limit", defaultLimit, "Number of results to return (max 500)")
 	cmd.Flags().IntVar(&from, "from", 0, "Offset for pagination")

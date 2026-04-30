@@ -138,23 +138,27 @@ func TestSearch_ForwardsFilters(t *testing.T) {
 	})
 
 	cmd := testutil.Command(newSearchCmd(), testutil.Quiet(true))
-	if err := cmd.Flags().Set("tag", "font"); err != nil {
-		t.Fatalf("set tag: %v", err)
+	flagValues := map[string]string{
+		"tag":          "font,illustration",
+		"taxonomy":     "3d/games",
+		"filetypes":    "pdf,epub",
+		"min-price":    "5",
+		"max-price":    "50",
+		"rating":       "4",
+		"min-reviews":  "10",
+		"staff-picked": "true",
+		"subscription": "true",
+		"bundle":       "false",
+		"call":         "true",
+		"exclude-ids":  "abc,def",
+		"sort":         "price_asc",
+		"limit":        "12",
+		"from":         "24",
 	}
-	if err := cmd.Flags().Set("min-price", "5"); err != nil {
-		t.Fatalf("set min-price: %v", err)
-	}
-	if err := cmd.Flags().Set("max-price", "50"); err != nil {
-		t.Fatalf("set max-price: %v", err)
-	}
-	if err := cmd.Flags().Set("sort", "price_asc"); err != nil {
-		t.Fatalf("set sort: %v", err)
-	}
-	if err := cmd.Flags().Set("limit", "12"); err != nil {
-		t.Fatalf("set limit: %v", err)
-	}
-	if err := cmd.Flags().Set("from", "24"); err != nil {
-		t.Fatalf("set from: %v", err)
+	for name, val := range flagValues {
+		if err := cmd.Flags().Set(name, val); err != nil {
+			t.Fatalf("set %s: %v", name, err)
+		}
 	}
 
 	if err := cmd.RunE(cmd, []string{"design"}); err != nil {
@@ -162,17 +166,97 @@ func TestSearch_ForwardsFilters(t *testing.T) {
 	}
 
 	checks := map[string]string{
-		"query":     "design",
-		"tags":      "font",
-		"min_price": "5",
-		"max_price": "50",
-		"sort":      "price_asc",
-		"size":      "12",
-		"from":      "24",
+		"query":             "design",
+		"tags":              "font,illustration",
+		"taxonomy":          "3d/games",
+		"filetypes":         "pdf,epub",
+		"min_price":         "5",
+		"max_price":         "50",
+		"rating":            "4",
+		"min_reviews_count": "10",
+		"staff_picked":      "true",
+		"is_subscription":   "true",
+		"is_bundle":         "false",
+		"is_call":           "true",
+		"exclude_ids":       "abc,def",
+		"sort":              "price_asc",
+		"size":              "12",
+		"from":              "24",
 	}
 	for key, want := range checks {
 		if got := gotQuery.Get(key); got != want {
 			t.Errorf("query param %s: got %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestSearch_TriStateBooleansOmittedWhenUnset(t *testing.T) {
+	var gotQuery url.Values
+	testutil.SetupPublic(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		testutil.JSON(t, w, sampleResponse(nil))
+	})
+
+	cmd := testutil.Command(newSearchCmd(), testutil.Quiet(true))
+	if err := cmd.RunE(cmd, []string{"design"}); err != nil {
+		t.Fatalf("RunE: %v", err)
+	}
+	for _, key := range []string{"is_subscription", "is_bundle", "is_call", "rating", "staff_picked"} {
+		if _, present := gotQuery[key]; present {
+			t.Errorf("expected %s to be omitted when flag unset; got %v", key, gotQuery[key])
+		}
+	}
+}
+
+func TestSearch_RejectsRatingOutOfRange(t *testing.T) {
+	testutil.SetupPublic(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: rating validation should run before HTTP")
+	})
+
+	for _, val := range []string{"0", "6", "-1"} {
+		cmd := testutil.Command(newSearchCmd(), testutil.Quiet(true))
+		if err := cmd.Flags().Set("rating", val); err != nil {
+			t.Fatalf("set rating=%s: %v", val, err)
+		}
+		err := cmd.RunE(cmd, []string{})
+		if err == nil || !strings.Contains(err.Error(), "--rating must be between") {
+			t.Errorf("rating=%s: expected validation error, got: %v", val, err)
+		}
+	}
+}
+
+func TestSearch_RejectsNegativeMinReviews(t *testing.T) {
+	testutil.SetupPublic(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: min-reviews validation should run before HTTP")
+	})
+
+	cmd := testutil.Command(newSearchCmd(), testutil.Quiet(true))
+	if err := cmd.Flags().Set("min-reviews", "-3"); err != nil {
+		t.Fatalf("set min-reviews: %v", err)
+	}
+	err := cmd.RunE(cmd, []string{})
+	if err == nil || !strings.Contains(err.Error(), "--min-reviews must not be negative") {
+		t.Fatalf("expected min-reviews error, got: %v", err)
+	}
+}
+
+func TestSearch_AcceptsAllSortValues(t *testing.T) {
+	for _, sortVal := range []string{"best_sellers", "newest", "recently_updated", "staff_picked"} {
+		var gotQuery url.Values
+		testutil.SetupPublic(t, func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.Query()
+			testutil.JSON(t, w, sampleResponse(nil))
+		})
+
+		cmd := testutil.Command(newSearchCmd(), testutil.Quiet(true))
+		if err := cmd.Flags().Set("sort", sortVal); err != nil {
+			t.Fatalf("set sort=%s: %v", sortVal, err)
+		}
+		if err := cmd.RunE(cmd, []string{}); err != nil {
+			t.Fatalf("sort=%s RunE: %v", sortVal, err)
+		}
+		if got := gotQuery.Get("sort"); got != sortVal {
+			t.Errorf("sort=%s: forwarded %q, want %q", sortVal, got, sortVal)
 		}
 	}
 }
