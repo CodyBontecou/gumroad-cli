@@ -99,6 +99,42 @@ func RunRequestDecoded[T any](opts Options, spinnerMessage, method, path string,
 	return RunDecoded[T](opts, spinnerMessage, requestRunner(method, path, params), render)
 }
 
+// RunRequestDecodedWithToken executes an API request with a caller-supplied
+// token (use "" for unauthenticated public endpoints) and an optional base URL
+// override (use "" for the default v2 API host). Decodes the response for
+// human/plain rendering while preserving the shared JSON/JQ fast-path.
+func RunRequestDecodedWithToken[T any](opts Options, token, baseURL, spinnerMessage, method, path string, params url.Values, render func(T) error) error {
+	if opts.DryRun && method != http.MethodGet {
+		return PrintDryRunRequest(opts, method, path, params)
+	}
+	data, err := runWithTokenAndBaseURL(opts, token, baseURL, spinnerMessage, requestRunner(method, path, params))
+	if err != nil {
+		return err
+	}
+	if opts.UsesJSONOutput() {
+		return PrintJSONResponse(opts, data)
+	}
+	decoded, err := DecodeJSON[T](data)
+	if err != nil {
+		return err
+	}
+	return render(decoded)
+}
+
+func runWithTokenAndBaseURL(opts Options, token, baseURL, spinnerMessage string, run ClientRunner) (json.RawMessage, error) {
+	if baseURL == "" {
+		return runWithTokenData(opts, token, spinnerMessage, run)
+	}
+	if ShouldShowSpinner(opts) {
+		sp := newSpinner(spinnerMessage, opts.Err())
+		sp.Start()
+		defer sp.Stop()
+	}
+	client := api.NewClientWithBaseURL(opts.Context, token, opts.Version, opts.DebugEnabled(), baseURL)
+	client.SetDebugWriter(opts.Err())
+	return run(client)
+}
+
 // RunRequestWithSuccess executes a mutating API request and prints a success
 // message in human mode. The id identifies the affected resource in JSON output.
 func RunRequestWithSuccess(opts Options, spinnerMessage, method, path string, params url.Values, id, successMessage string) error {
