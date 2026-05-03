@@ -501,13 +501,24 @@ func TestBuy_FallsBackToFirstLineItem(t *testing.T) {
 }
 
 func TestBuy_EmptyLineItemsErrors(t *testing.T) {
-	testutil.Setup(t, ordersHandler(t, map[string]any{"line_items": map[string]any{}}))
+	testutil.Setup(t, ordersHandler(t, map[string]any{"success": true, "line_items": map[string]any{}, "offer_codes": []any{}}))
 
 	cmd := testutil.Command(NewBuyCmd(), testutil.Yes(true))
 	cmd.SetArgs([]string{"abc123", "--pm", "pm_card_visa", "--price-cents", "500"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "missing line items") {
-		t.Fatalf("expected missing line items error, got %v", err)
+	if err == nil {
+		t.Fatal("expected empty line items error, got nil")
+	}
+	for _, want := range []string{
+		"no line items returned by /v2/orders",
+		"body sent:",
+		`"permalink":"abc123"`,
+		`"stripe_payment_method_id":"pm_card_visa"`,
+		`"perceived_price_cents":500`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected error to contain %q so the user sees what was sent; got %v", want, err)
+		}
 	}
 }
 

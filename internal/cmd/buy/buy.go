@@ -128,7 +128,7 @@ func NewBuyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderBuyResult(opts, resp)
+			return renderBuyResult(opts, resp, body)
 		},
 	}
 
@@ -235,7 +235,7 @@ func renderDryRun(opts cmdutil.Options, body map[string]any) error {
 	return output.Writeln(opts.Out(), string(data))
 }
 
-func renderBuyResult(opts cmdutil.Options, resp buyResponse) error {
+func renderBuyResult(opts cmdutil.Options, resp buyResponse, requestBody map[string]any) error {
 	item, ok := resp.LineItems[defaultLineItemUID]
 	if !ok {
 		for _, value := range resp.LineItems {
@@ -245,7 +245,11 @@ func renderBuyResult(opts cmdutil.Options, resp buyResponse) error {
 		}
 	}
 	if !ok {
-		return errors.New("purchase response missing line items")
+		bodyJSON, marshalErr := json.Marshal(requestBody)
+		if marshalErr != nil {
+			return fmt.Errorf("no line items returned by /v2/orders — body sent: %v", requestBody)
+		}
+		return fmt.Errorf("no line items returned by /v2/orders — body sent: %s", bodyJSON)
 	}
 
 	style := opts.Style()
