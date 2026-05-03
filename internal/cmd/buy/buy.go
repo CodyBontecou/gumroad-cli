@@ -39,6 +39,7 @@ type buyResponse struct {
 func NewBuyCmd() *cobra.Command {
 	var paymentMethodID, customerID, email, variant, offerCode string
 	var quantity, priceCents, tipCents int
+	var useLink bool
 
 	cmd := &cobra.Command{
 		Use:   "buy <permalink>",
@@ -48,17 +49,25 @@ func NewBuyCmd() *cobra.Command {
 			"and pass it via --payment-method-id. 3DS / SCA challenges cannot be " +
 			"completed in a CLI; when one is required, the command prints a " +
 			"confirmation URL and exits non-zero so you can finish in a browser.\n\n" +
+			"With --link, the CLI mints a one-time test card via the Stripe Link CLI " +
+			"and tokenizes it with Gumroad's test publishable key (set GUMROAD_STRIPE_PUBLISHABLE_KEY). " +
+			"This path is dev-only — the spend request is created with --test, which " +
+			"always returns the test card 4242 4242 4242 4242 and only charges in Stripe test mode.\n\n" +
 			"Requires an OAuth token with the create_purchases scope.",
 		Example: `  gumroad buy abc123 --payment-method-id pm_card_visa --price-cents 500 --yes
   gumroad buy abc123 --pm pm_card_visa --price-cents 500 --yes
-  gumroad buy abc123 --pm pm_card_visa --price-cents 500 --quantity 2 --offer-code SAVE10 --yes`,
+  gumroad buy abc123 --pm pm_card_visa --price-cents 500 --quantity 2 --offer-code SAVE10 --yes
+  gumroad buy abc123 --link --price-cents 500 --yes`,
 		Args: cmdutil.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts := cmdutil.OptionsFrom(c)
 			flags := c.Flags()
 			permalink := args[0]
 
-			if paymentMethodID == "" {
+			if useLink && paymentMethodID != "" {
+				return cmdutil.UsageErrorf(c, "--link and --payment-method-id are mutually exclusive")
+			}
+			if !useLink && paymentMethodID == "" {
 				return cmdutil.MissingFlagError(c, "--payment-method-id")
 			}
 			if !flags.Changed("price-cents") {
@@ -79,8 +88,12 @@ func NewBuyCmd() *cobra.Command {
 				}
 			}
 
-			body := buildOrderBody(orderBodyInput{
-				PaymentMethodID: paymentMethodID,
+			pmForBody := paymentMethodID
+			if useLink {
+				pmForBody = linkPlaceholderPM
+			}
+			dryRunBody := buildOrderBody(orderBodyInput{
+				PaymentMethodID: pmForBody,
 				CustomerID:      customerID,
 				CustomerIDSet:   flags.Changed("customer-id"),
 				Email:           email,
@@ -97,10 +110,10 @@ func NewBuyCmd() *cobra.Command {
 			})
 
 			if opts.DryRun {
-				return renderDryRun(opts, body)
+				return renderDryRun(opts, dryRunBody)
 			}
 
-			summary := buildBuySummary(permalink, paymentMethodID, priceCents, quantity)
+			summary := buildBuySummary(permalink, pmForBody, priceCents, quantity)
 			ok, err := cmdutil.ConfirmAction(opts, "Buy "+summary+"?")
 			if err != nil {
 				return err
@@ -108,6 +121,36 @@ func NewBuyCmd() *cobra.Command {
 			if !ok {
 				return cmdutil.PrintCancelledAction(opts, "buy "+permalink, permalink)
 			}
+
+			if useLink {
+				mintedPM, err := newLinkSpender().Mint(opts.Context, linkBuyParams{
+					Permalink:  permalink,
+					PriceCents: priceCents,
+					Quantity:   quantity,
+					TipCents:   tipCents,
+				})
+				if err != nil {
+					return fmt.Errorf("mint Link payment method: %w", err)
+				}
+				paymentMethodID = mintedPM
+			}
+
+			body := buildOrderBody(orderBodyInput{
+				PaymentMethodID: paymentMethodID,
+				CustomerID:      customerID,
+				CustomerIDSet:   flags.Changed("customer-id"),
+				Email:           email,
+				EmailSet:        flags.Changed("email"),
+				Permalink:       permalink,
+				PerceivedCents:  priceCents,
+				Quantity:        quantity,
+				Variant:         variant,
+				VariantSet:      flags.Changed("variant"),
+				OfferCode:       offerCode,
+				OfferCodeSet:    flags.Changed("offer-code"),
+				TipCents:        tipCents,
+				TipCentsSet:     flags.Changed("tip-cents"),
+			})
 
 			token, err := config.Token()
 			if err != nil {
@@ -132,8 +175,9 @@ func NewBuyCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&paymentMethodID, "payment-method-id", "", "Stripe PaymentMethod ID (pm_xxx) on Gumroad's platform (required)")
+	cmd.Flags().StringVar(&paymentMethodID, "payment-method-id", "", "Stripe PaymentMethod ID (pm_xxx) on Gumroad's platform (required unless --link)")
 	cmd.Flags().StringVar(&paymentMethodID, "pm", "", "Alias for --payment-method-id")
+	cmd.Flags().BoolVar(&useLink, "link", false, "Mint a one-time test card via Stripe Link CLI and tokenize it (dev-only; requires link-cli auth + GUMROAD_STRIPE_PUBLISHABLE_KEY)")
 	cmd.Flags().StringVar(&customerID, "customer-id", "", "Stripe customer (cus_xxx) for saved-card flows")
 	cmd.Flags().StringVar(&email, "email", "", "Override receipt email (default: the OAuth user's email)")
 	cmd.Flags().IntVar(&quantity, "quantity", 1, "Quantity to purchase")

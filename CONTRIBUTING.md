@@ -63,6 +63,29 @@ eval "$(OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES bin/rails runner script/cli-toke
 gumroad auth status
 ```
 
+### Buying with Stripe Link in dev (`--link`)
+
+`gumroad buy --link` mints a one-time test card via the [Stripe Link CLI](https://github.com/stripe/link-cli), tokenizes it through Gumroad's local Stripe test publishable key, and uses the resulting `pm_xxx` for the order. Dev-only — the spend request is created with `--test`, which always returns the test card `4242 4242 4242 4242` and only charges in Stripe test mode.
+
+Prerequisites:
+
+```bash
+npm i -g @stripe/link-cli
+link-cli auth login                        # interactive: open URL, confirm phrase in your Link app
+link-cli payment-methods list              # at least one payment method must exist
+export GUMROAD_STRIPE_PUBLISHABLE_KEY=pk_test_…   # value of STRIPE_PUBLIC_KEY_TEST from gumroad/.env.development
+```
+
+Then buy without pre-minting a PaymentMethod:
+
+```bash
+gumroad buy <permalink> --link --price-cents 500 --yes
+```
+
+The CLI calls `link-cli spend-request create --test --request-approval`, which prompts you to approve in your Link app, then retrieves the card details, tokenizes them via Stripe with your `pk_test_…`, and posts the resulting `pm_xxx` to `/v2/orders` like a normal buy.
+
+Production note: `--link` is not viable in production today. Live-mode Stripe blocks server-side raw-card tokenization unless the merchant is PCI-attested. The path forward is for Gumroad to accept Stripe's [shared payment token](https://mpp.dev) credential type via an MPP endpoint, at which point the CLI can hand a Link-issued token directly to Gumroad without ever touching card data.
+
 ## Pull requests
 
 - Include an AI disclosure
