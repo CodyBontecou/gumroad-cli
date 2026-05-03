@@ -44,9 +44,9 @@ func DefaultFlowConfig() FlowConfig {
 
 func defaultFlowConfig() FlowConfig {
 	return FlowConfig{
-		ClientID:     ClientID,
-		AuthorizeURL: AuthorizeURL,
-		TokenURL:     TokenURL,
+		ClientID:     ClientID(),
+		AuthorizeURL: AuthorizeURL(),
+		TokenURL:     TokenURL(),
 		Scopes:       Scopes,
 		Timeout:      DefaultTimeout,
 	}

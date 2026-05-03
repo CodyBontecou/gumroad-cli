@@ -425,21 +425,85 @@ func TestBrowserFlow_TokenResponseInvalidJSON(t *testing.T) {
 }
 
 func TestDefaultFlowConfig(t *testing.T) {
+	t.Setenv(EnvClientID, "")
+	t.Setenv(EnvAuthorizeURL, "")
+	t.Setenv(EnvTokenURL, "")
+
 	cfg := DefaultFlowConfig()
-	if cfg.ClientID != ClientID {
-		t.Errorf("ClientID = %q, want %q", cfg.ClientID, ClientID)
+	if cfg.ClientID != DefaultClientID {
+		t.Errorf("ClientID = %q, want %q", cfg.ClientID, DefaultClientID)
 	}
-	if cfg.AuthorizeURL != AuthorizeURL {
-		t.Errorf("AuthorizeURL = %q, want %q", cfg.AuthorizeURL, AuthorizeURL)
+	if cfg.AuthorizeURL != DefaultAuthorizeURL {
+		t.Errorf("AuthorizeURL = %q, want %q", cfg.AuthorizeURL, DefaultAuthorizeURL)
 	}
-	if cfg.TokenURL != TokenURL {
-		t.Errorf("TokenURL = %q, want %q", cfg.TokenURL, TokenURL)
+	if cfg.TokenURL != DefaultTokenURL {
+		t.Errorf("TokenURL = %q, want %q", cfg.TokenURL, DefaultTokenURL)
 	}
 	if cfg.Scopes != Scopes {
 		t.Errorf("Scopes = %q, want %q", cfg.Scopes, Scopes)
 	}
 	if cfg.Timeout != DefaultTimeout {
 		t.Errorf("Timeout = %v, want %v", cfg.Timeout, DefaultTimeout)
+	}
+}
+
+func TestEnvOverrides_TakeEffect(t *testing.T) {
+	t.Setenv(EnvClientID, "local-client-id")
+	t.Setenv(EnvAuthorizeURL, "http://api.gumroad.dev:3000/oauth/authorize")
+	t.Setenv(EnvTokenURL, "http://api.gumroad.dev:3000/oauth/token")
+
+	if got := ClientID(); got != "local-client-id" {
+		t.Errorf("ClientID() = %q, want local-client-id", got)
+	}
+	if got := AuthorizeURL(); got != "http://api.gumroad.dev:3000/oauth/authorize" {
+		t.Errorf("AuthorizeURL() = %q, want local override", got)
+	}
+	if got := TokenURL(); got != "http://api.gumroad.dev:3000/oauth/token" {
+		t.Errorf("TokenURL() = %q, want local override", got)
+	}
+
+	cfg := DefaultFlowConfig()
+	if cfg.ClientID != "local-client-id" {
+		t.Errorf("DefaultFlowConfig.ClientID = %q, want local-client-id", cfg.ClientID)
+	}
+	if cfg.AuthorizeURL != "http://api.gumroad.dev:3000/oauth/authorize" {
+		t.Errorf("DefaultFlowConfig.AuthorizeURL = %q, want local override", cfg.AuthorizeURL)
+	}
+	if cfg.TokenURL != "http://api.gumroad.dev:3000/oauth/token" {
+		t.Errorf("DefaultFlowConfig.TokenURL = %q, want local override", cfg.TokenURL)
+	}
+}
+
+func TestEnvOverrides_ReadAtCallTimeNotInit(t *testing.T) {
+	t.Setenv(EnvTokenURL, "")
+	if got := TokenURL(); got != DefaultTokenURL {
+		t.Fatalf("baseline TokenURL() = %q, want %q", got, DefaultTokenURL)
+	}
+
+	t.Setenv(EnvTokenURL, "http://localhost:9999/oauth/token")
+	if got := TokenURL(); got != "http://localhost:9999/oauth/token" {
+		t.Fatalf("after setenv TokenURL() = %q, want override (env must be read at call time)", got)
+	}
+
+	t.Setenv(EnvTokenURL, "")
+	if got := TokenURL(); got != DefaultTokenURL {
+		t.Fatalf("after clearing env TokenURL() = %q, want %q (env must be re-read)", got, DefaultTokenURL)
+	}
+}
+
+func TestEnvOverrides_DefaultsWhenUnset(t *testing.T) {
+	t.Setenv(EnvClientID, "")
+	t.Setenv(EnvAuthorizeURL, "")
+	t.Setenv(EnvTokenURL, "")
+
+	if got := ClientID(); got != DefaultClientID {
+		t.Errorf("ClientID() = %q, want %q (default)", got, DefaultClientID)
+	}
+	if got := AuthorizeURL(); got != DefaultAuthorizeURL {
+		t.Errorf("AuthorizeURL() = %q, want %q (default)", got, DefaultAuthorizeURL)
+	}
+	if got := TokenURL(); got != DefaultTokenURL {
+		t.Errorf("TokenURL() = %q, want %q (default)", got, DefaultTokenURL)
 	}
 }
 
