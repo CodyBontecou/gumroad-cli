@@ -23,6 +23,46 @@ make test     # Run all tests
 - Go 1.25+
 - [golangci-lint](https://golangci-lint.run/) for linting
 
+### Authenticating against a local Rails server
+
+`gumroad auth login` defaults to the production OAuth app at `https://app.gumroad.com`. To run the CLI against a local [`gumroad`](https://github.com/antiwork/gumroad) Rails checkout, override the OAuth endpoints and (if needed) the client ID with environment variables. They are read at call time, so you can flip them per-shell:
+
+```bash
+export GUMROAD_API_BASE_URL=http://api.gumroad.dev:3000/v2
+export GUMROAD_OAUTH_AUTHORIZE_URL=http://api.gumroad.dev:3000/oauth/authorize
+export GUMROAD_OAUTH_TOKEN_URL=http://api.gumroad.dev:3000/oauth/token
+export GUMROAD_OAUTH_CLIENT_ID=<UID of a local Doorkeeper::Application> # optional
+```
+
+If you don't want to register a Doorkeeper app and walk the browser flow, mint an access token directly with `bin/rails runner` from the gumroad repo. Save this as `script/cli-token.rb`:
+
+```ruby
+# Usage: bin/rails runner script/cli-token.rb <user-email> [scopes]
+# Example: OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES bin/rails runner script/cli-token.rb qa-buyer@example.com "account create_purchases"
+email  = ARGV.fetch(0)
+scopes = ARGV.fetch(1, "edit_products view_sales view_profile account")
+user   = User.find_by!(email: email)
+app    = Doorkeeper::Application.find_or_create_by!(name: "gumroad-cli-local") do |a|
+  a.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+  a.scopes       = scopes
+  a.owner        = user
+end
+token = Doorkeeper::AccessToken.create!(
+  application_id:    app.id,
+  resource_owner_id: user.id,
+  scopes:            scopes,
+  expires_in:        nil,
+)
+puts "export GUMROAD_ACCESS_TOKEN=#{token.token}"
+```
+
+Source the output to skip `gumroad auth login` entirely:
+
+```bash
+eval "$(OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES bin/rails runner script/cli-token.rb qa-buyer@example.com)"
+gumroad auth status
+```
+
 ## Pull requests
 
 - Include an AI disclosure
