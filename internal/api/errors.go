@@ -73,10 +73,11 @@ func rewriteError(statusCode int, msg string) (message, hint string) {
 	case 401:
 		return "Not authenticated.", HintRunAuthLogin
 	case 403:
+		hint := "Check that your token has the required scope (e.g. create_purchases for buy, edit_products for product mutations)."
 		if msg != "" {
-			return fmt.Sprintf("Access denied: %s", msg), "Check that your token has the required scope."
+			return fmt.Sprintf("Access denied: %s", msg), hint
 		}
-		return "Access denied.", "Check that your token has the required scope."
+		return "Access denied.", hint
 	case 404:
 		if msg != "" {
 			return msg, "Check the resource ID and try again."

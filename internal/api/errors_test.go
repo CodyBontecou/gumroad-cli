@@ -152,7 +152,7 @@ func TestAPIError_Hints(t *testing.T) {
 		wantHint   string
 	}{
 		{"401", 401, `{"success":false}`, HintRunAuthLogin},
-		{"403", 403, `{"success":false}`, "Check that your token has the required scope."},
+		{"403", 403, `{"success":false}`, "Check that your token has the required scope (e.g. create_purchases for buy, edit_products for product mutations)."},
 		{"404", 404, `{"success":false}`, "Check the resource ID and try again."},
 		{"429", 429, `{"success":false,"message":"Rate limited"}`, "Wait a moment and retry."},
 		{"500", 500, `{"success":false}`, ""},
